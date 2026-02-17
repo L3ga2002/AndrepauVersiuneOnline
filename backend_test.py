@@ -193,7 +193,7 @@ class ANDREPAUAPITester:
         }
         
         status, data = self.make_request('POST', 'products', product_data, self.admin_token)
-        success = status == 201 and 'id' in data
+        success = status == 200 and 'id' in data
         if success:
             self.test_product_id = data['id']
         

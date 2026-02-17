@@ -87,7 +87,8 @@
 }
 
 .data-table th {
-    @apply text-left p-4 font-heading text-sm uppercase tracking-wider text-muted-foreground border-b border-border;
+    @apply text-left p-4 text-sm uppercase tracking-wider text-muted-foreground border-b border-border;
+    font-family: 'Barlow Condensed', sans-serif;
 }
 
 .data-table td {

@@ -243,12 +243,12 @@ export default function ProductsPage() {
           />
         </div>
         
-        <Select value={filterCategory} onValueChange={setFilterCategory}>
+        <Select value={filterCategory || "all"} onValueChange={(v) => setFilterCategory(v === "all" ? "" : v)}>
           <SelectTrigger data-testid="filter-category" className="w-full md:w-64 h-12 bg-card border-border text-foreground">
             <SelectValue placeholder="Toate categoriile" />
           </SelectTrigger>
           <SelectContent className="bg-card border-border">
-            <SelectItem value="">Toate categoriile</SelectItem>
+            <SelectItem value="all">Toate categoriile</SelectItem>
             {[...new Set([...CATEGORIES, ...categories])].map(cat => (
               <SelectItem key={cat} value={cat}>{cat}</SelectItem>
             ))}

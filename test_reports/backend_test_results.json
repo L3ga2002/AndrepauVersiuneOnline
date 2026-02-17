@@ -1,0 +1,146 @@
+{
+  "total_tests": 23,
+  "passed_tests": 18,
+  "failed_tests": 5,
+  "success_rate": 78.26086956521739,
+  "test_results": [
+    {
+      "name": "API Health Check",
+      "success": true,
+      "details": "Status: 200, Response: {'message': 'ANDREPAU POS API', 'version': '1.0.0'}",
+      "error": ""
+    },
+    {
+      "name": "Database Seeding",
+      "success": true,
+      "details": "Status: 200, Message: Database deja populat\u0103",
+      "error": ""
+    },
+    {
+      "name": "Admin Login",
+      "success": true,
+      "details": "User: admin, Role: admin",
+      "error": ""
+    },
+    {
+      "name": "Casier Login",
+      "success": true,
+      "details": "User: casier, Role: casier",
+      "error": ""
+    },
+    {
+      "name": "Auth Me Endpoint",
+      "success": true,
+      "details": "Retrieved user: admin",
+      "error": ""
+    },
+    {
+      "name": "Create Supplier",
+      "success": false,
+      "details": "",
+      "error": "Create failed: 200 - {'id': 'bb52063f-864e-4dc9-8d67-8c5beb4b3288', 'nume': 'Test Supplier Ltd', 'telefon': '0721123456', 'email': 'test@supplier.com', 'adresa': 'Test Address 123', 'created_at': '2026-02-17T17:29:26.965825+00:00'}"
+    },
+    {
+      "name": "Create Product",
+      "success": false,
+      "details": "",
+      "error": "Create failed: 200 - {'id': '994c5e10-9bf3-4e87-8bd4-b660fab06066', 'nume': 'Test Product', 'categorie': 'Test Category', 'furnizor_id': None, 'cod_bare': '1234567890123', 'pret_achizitie': 10.0, 'pret_vanzare': 15.0, 'tva': 19.0, 'unitate': 'buc', 'stoc': 100.0, 'stoc_minim': 10.0, 'descriere': 'Test product description', 'created_at': '2026-02-17T17:29:27.093409+00:00'}"
+    },
+    {
+      "name": "Get Categories",
+      "success": true,
+      "details": "Found 9 categories",
+      "error": ""
+    },
+    {
+      "name": "Create POS Sale",
+      "success": false,
+      "details": "",
+      "error": "Sale creation failed: 422 - {'detail': [{'type': 'string_type', 'loc': ['body', 'items', 0, 'product_id'], 'msg': 'Input should be a valid string', 'input': None, 'url': 'https://errors.pydantic.dev/2.12/v/string_type'}]}"
+    },
+    {
+      "name": "Get Sales History",
+      "success": false,
+      "details": "",
+      "error": "Sales history failed: 200 - []"
+    },
+    {
+      "name": "Create NIR",
+      "success": false,
+      "details": "",
+      "error": "NIR creation failed: 422 - {'detail': [{'type': 'string_type', 'loc': ['body', 'furnizor_id'], 'msg': 'Input should be a valid string', 'input': None, 'url': 'https://errors.pydantic.dev/2.12/v/string_type'}, {'type': 'string_type', 'loc': ['body', 'items', 0, 'product_id'], 'msg': 'Input should be a valid string', 'input': None, 'url': 'https://errors.pydantic.dev/2.12/v/string_type'}]}"
+    },
+    {
+      "name": "Stock Dashboard",
+      "success": true,
+      "details": "Products: 55, Value: 73152.0",
+      "error": ""
+    },
+    {
+      "name": "Stock Alerts",
+      "success": true,
+      "details": "Found 4 stock alerts",
+      "error": ""
+    },
+    {
+      "name": "Sales Report",
+      "success": true,
+      "details": "Total sales: 0",
+      "error": ""
+    },
+    {
+      "name": "Top Products Report",
+      "success": true,
+      "details": "Found 0 top products",
+      "error": ""
+    },
+    {
+      "name": "Top Categories Report",
+      "success": true,
+      "details": "Found 0 top categories",
+      "error": ""
+    },
+    {
+      "name": "Profit Report",
+      "success": true,
+      "details": "Profit: 0",
+      "error": ""
+    },
+    {
+      "name": "Daily Sales Report",
+      "success": true,
+      "details": "Found 0 daily records",
+      "error": ""
+    },
+    {
+      "name": "Get Users",
+      "success": true,
+      "details": "Found 4 users",
+      "error": ""
+    },
+    {
+      "name": "Casier Access Restriction",
+      "success": true,
+      "details": "Casier correctly denied access to users",
+      "error": ""
+    },
+    {
+      "name": "Casier Product Creation Restriction",
+      "success": true,
+      "details": "Casier correctly denied product creation",
+      "error": ""
+    },
+    {
+      "name": "Casier Profit Report Restriction",
+      "success": true,
+      "details": "Casier correctly denied profit access",
+      "error": ""
+    },
+    {
+      "name": "Database Backup",
+      "success": true,
+      "details": "Backup contains 55 products, 7 suppliers",
+      "error": ""
+    }
+  ]
+}

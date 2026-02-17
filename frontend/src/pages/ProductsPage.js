@@ -403,14 +403,14 @@ export default function ProductsPage() {
               <div>
                 <Label className="text-muted-foreground">Furnizor</Label>
                 <Select 
-                  value={formData.furnizor_id} 
-                  onValueChange={(v) => setFormData({...formData, furnizor_id: v})}
+                  value={formData.furnizor_id || "none"} 
+                  onValueChange={(v) => setFormData({...formData, furnizor_id: v === "none" ? "" : v})}
                 >
                   <SelectTrigger data-testid="input-furnizor" className="h-12 mt-1 bg-background border-border text-foreground">
                     <SelectValue placeholder="Selectați furnizorul" />
                   </SelectTrigger>
                   <SelectContent className="bg-card border-border">
-                    <SelectItem value="">Fără furnizor</SelectItem>
+                    <SelectItem value="none">Fără furnizor</SelectItem>
                     {suppliers.map(sup => (
                       <SelectItem key={sup.id} value={sup.id}>{sup.nume}</SelectItem>
                     ))}

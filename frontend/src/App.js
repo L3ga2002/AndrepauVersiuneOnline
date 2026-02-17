@@ -1,51 +1,153 @@
-import { useEffect } from "react";
+import React, { useEffect } from "react";
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Toaster } from "./components/ui/sonner";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import LoginPage from "./pages/LoginPage";
+import POSPage from "./pages/POSPage";
+import ProductsPage from "./pages/ProductsPage";
+import StockPage from "./pages/StockPage";
+import ReportsPage from "./pages/ReportsPage";
+import SuppliersPage from "./pages/SuppliersPage";
+import SettingsPage from "./pages/SettingsPage";
+import Layout from "./components/Layout";
 import axios from "axios";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+const API_URL = process.env.REACT_APP_BACKEND_URL + '/api';
 
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
-
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
-
-  return (
-    <div>
-      <header className="App-header">
-        <a
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
+// Protected Route component
+const ProtectedRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="spinner" />
+      </div>
+    );
+  }
+  
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  return children;
 };
+
+// Admin Route component
+const AdminRoute = ({ children }) => {
+  const { user, loading, isAdmin } = useAuth();
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="spinner" />
+      </div>
+    );
+  }
+  
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  if (!isAdmin) {
+    return <Navigate to="/pos" replace />;
+  }
+  
+  return children;
+};
+
+// Auth redirect - if logged in, go to POS
+const AuthRedirect = ({ children }) => {
+  const { user, loading } = useAuth();
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="spinner" />
+      </div>
+    );
+  }
+  
+  if (user) {
+    return <Navigate to="/pos" replace />;
+  }
+  
+  return children;
+};
+
+// Initialize database
+const InitApp = () => {
+  useEffect(() => {
+    const seedDatabase = async () => {
+      try {
+        await axios.post(`${API_URL}/seed`);
+        console.log('Database seeded successfully');
+      } catch (error) {
+        // Database might already be seeded, that's ok
+        console.log('Database seed skipped or already seeded');
+      }
+    };
+    seedDatabase();
+  }, []);
+  
+  return null;
+};
+
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/login" element={
+        <AuthRedirect>
+          <LoginPage />
+        </AuthRedirect>
+      } />
+      
+      <Route path="/" element={
+        <ProtectedRoute>
+          <Layout />
+        </ProtectedRoute>
+      }>
+        <Route index element={<Navigate to="/pos" replace />} />
+        <Route path="pos" element={<POSPage />} />
+        <Route path="products" element={<ProductsPage />} />
+        <Route path="stock" element={<StockPage />} />
+        <Route path="reports" element={<ReportsPage />} />
+        <Route path="suppliers" element={
+          <AdminRoute>
+            <SuppliersPage />
+          </AdminRoute>
+        } />
+        <Route path="settings" element={
+          <AdminRoute>
+            <SettingsPage />
+          </AdminRoute>
+        } />
+      </Route>
+      
+      <Route path="*" element={<Navigate to="/pos" replace />} />
+    </Routes>
+  );
+}
 
 function App() {
   return (
     <div className="App">
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
+        <AuthProvider>
+          <InitApp />
+          <AppRoutes />
+          <Toaster 
+            position="top-right"
+            toastOptions={{
+              style: {
+                background: 'hsl(240 10% 6.9%)',
+                border: '1px solid hsl(240 4% 16%)',
+                color: 'hsl(0 0% 98%)',
+              },
+            }}
+          />
+        </AuthProvider>
       </BrowserRouter>
     </div>
   );

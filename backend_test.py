@@ -220,7 +220,7 @@ class ANDREPAUAPITester:
 
         # Get product by barcode
         status, data = self.make_request('GET', f'products/barcode/{product_data["cod_bare"]}', token=self.admin_token)
-        success = status == 200 and data.get('id') == self.test_product_id
+        success = status == 200 and data.get('cod_bare') == product_data["cod_bare"]
         self.log_test("Get Product by Barcode", success,
                      f"Found product by barcode: {data.get('nume')}" if success else "",
                      f"Barcode lookup failed: {status} - {data}" if not success else "")

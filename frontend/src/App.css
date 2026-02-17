@@ -1,34 +1,203 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+/* ANDREPAU POS Custom Styles */
+
+/* Industrial card styling */
+.industrial-card {
+    @apply bg-card border border-border rounded-sm shadow-sm;
+    transition: border-color 0.2s ease;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+.industrial-card:hover {
+    @apply border-primary/50;
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+/* Big POS buttons */
+.pos-btn {
+    @apply h-14 px-6 text-lg font-bold uppercase tracking-wide rounded-sm;
+    transition: transform 0.1s ease, background-color 0.2s ease;
 }
 
-.App-link {
-    color: #61dafb;
+.pos-btn:active {
+    transform: scale(0.98);
 }
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+.pos-btn-primary {
+    @apply bg-primary text-primary-foreground hover:bg-primary/90;
+}
+
+.pos-btn-secondary {
+    @apply bg-secondary text-secondary-foreground hover:bg-secondary/80;
+}
+
+.pos-btn-destructive {
+    @apply bg-destructive text-destructive-foreground hover:bg-destructive/90;
+}
+
+/* Product grid card */
+.product-card {
+    @apply bg-card border border-border rounded-sm p-4 cursor-pointer;
+    transition: transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.product-card:hover {
+    @apply border-primary/50;
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.1);
+}
+
+.product-card:active {
+    transform: scale(0.97);
+}
+
+/* Cart item styling */
+.cart-item {
+    @apply flex items-center justify-between p-3 border-b border-border;
+    transition: background-color 0.15s ease;
+}
+
+.cart-item:hover {
+    @apply bg-secondary/50;
+}
+
+/* Payment buttons */
+.payment-btn {
+    @apply flex-1 h-16 text-xl font-bold uppercase rounded-sm;
+    transition: transform 0.1s ease;
+}
+
+.payment-btn:active {
+    transform: scale(0.98);
+}
+
+/* Navigation sidebar */
+.nav-item {
+    @apply flex items-center gap-3 px-4 py-3 rounded-sm text-muted-foreground;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.nav-item:hover {
+    @apply bg-secondary text-foreground;
+}
+
+.nav-item.active {
+    @apply bg-primary/10 text-primary border-l-2 border-primary;
+}
+
+/* Data table styling */
+.data-table {
+    @apply w-full;
+}
+
+.data-table th {
+    @apply text-left p-4 font-heading text-sm uppercase tracking-wider text-muted-foreground border-b border-border;
+}
+
+.data-table td {
+    @apply p-4 border-b border-border;
+}
+
+.data-table tr:hover td {
+    @apply bg-secondary/30;
+}
+
+/* Stats card */
+.stats-card {
+    @apply bg-card border border-border rounded-sm p-6;
+    transition: border-color 0.2s ease;
+}
+
+.stats-card:hover {
+    @apply border-primary/30;
+}
+
+/* Input focus styling */
+.input-industrial {
+    @apply h-12 bg-background border border-border rounded-sm px-4 text-lg;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.input-industrial:focus {
+    @apply border-primary outline-none;
+    box-shadow: 0 0 0 2px hsl(var(--primary) / 0.2);
+}
+
+/* Badge styles */
+.badge-success {
+    @apply bg-green-500/20 text-green-500 px-2 py-1 rounded-sm text-xs font-medium;
+}
+
+.badge-warning {
+    @apply bg-yellow-500/20 text-yellow-500 px-2 py-1 rounded-sm text-xs font-medium;
+}
+
+.badge-danger {
+    @apply bg-red-500/20 text-red-500 px-2 py-1 rounded-sm text-xs font-medium;
+}
+
+/* Receipt styling */
+.receipt {
+    @apply font-mono text-sm leading-relaxed;
+}
+
+.receipt-header {
+    @apply text-center border-b border-dashed border-border pb-4 mb-4;
+}
+
+.receipt-item {
+    @apply flex justify-between py-1;
+}
+
+.receipt-total {
+    @apply border-t border-dashed border-border pt-4 mt-4 text-lg font-bold;
+}
+
+/* Loading spinner */
+.spinner {
+    @apply animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full;
+}
+
+/* Quantity selector */
+.qty-btn {
+    @apply w-12 h-12 flex items-center justify-center bg-secondary text-foreground rounded-sm font-bold text-xl;
+    transition: background-color 0.15s ease;
+}
+
+.qty-btn:hover {
+    @apply bg-secondary/80;
+}
+
+.qty-btn:active {
+    transform: scale(0.95);
+}
+
+/* Alert notification */
+.alert-badge {
+    @apply absolute -top-1 -right-1 w-5 h-5 bg-destructive text-destructive-foreground rounded-full text-xs flex items-center justify-center font-bold;
+}
+
+/* Category tag */
+.category-tag {
+    @apply inline-flex items-center px-3 py-1 rounded-sm text-sm font-medium bg-secondary text-secondary-foreground;
+    transition: background-color 0.15s ease;
+}
+
+.category-tag:hover {
+    @apply bg-secondary/80;
+}
+
+.category-tag.active {
+    @apply bg-primary text-primary-foreground;
+}
+
+/* Search highlight */
+.search-highlight {
+    @apply bg-primary/30 text-foreground px-1 rounded;
+}
+
+/* Modal overlay */
+.modal-overlay {
+    @apply fixed inset-0 bg-black/70 backdrop-blur-sm z-50;
+}
+
+/* Tooltip */
+.tooltip {
+    @apply absolute bg-popover text-popover-foreground px-3 py-2 rounded-sm text-sm shadow-lg z-50;
 }

@@ -1,8 +1,8 @@
 {
   "total_tests": 31,
-  "passed_tests": 30,
-  "failed_tests": 1,
-  "success_rate": 96.7741935483871,
+  "passed_tests": 31,
+  "failed_tests": 0,
+  "success_rate": 100.0,
   "test_results": [
     {
       "name": "API Health Check",
@@ -37,7 +37,7 @@
     {
       "name": "Create Supplier",
       "success": true,
-      "details": "Created supplier ID: c6477608-d78e-4129-8bb5-51eb22774299",
+      "details": "Created supplier ID: 2f37ac03-a050-4f08-b011-e67113a83614",
       "error": ""
     },
     {
@@ -55,7 +55,7 @@
     {
       "name": "Create Product",
       "success": true,
-      "details": "Created product ID: c4f70e89-7c4d-49ce-828b-4a9a8b6bb1b5",
+      "details": "Created product ID: cb28b13d-d364-47b5-b0cf-0ca9948cce94",
       "error": ""
     },
     {
@@ -72,9 +72,9 @@
     },
     {
       "name": "Get Product by Barcode",
-      "success": false,
-      "details": "",
-      "error": "Barcode lookup failed: 200 - {'id': '994c5e10-9bf3-4e87-8bd4-b660fab06066', 'nume': 'Test Product', 'categorie': 'Test Category', 'furnizor_id': None, 'cod_bare': '1234567890123', 'pret_achizitie': 10.0, 'pret_vanzare': 15.0, 'tva': 19.0, 'unitate': 'buc', 'stoc': 100.0, 'stoc_minim': 10.0, 'descriere': 'Test product description', 'created_at': '2026-02-17T17:29:27.093409+00:00'}"
+      "success": true,
+      "details": "Found product by barcode: Test Product",
+      "error": ""
     },
     {
       "name": "Update Product",
@@ -91,19 +91,19 @@
     {
       "name": "Create POS Sale",
       "success": true,
-      "details": "Created sale ID: aff685d2-b188-414c-a66d-2d64cacca7bb, Bon: BON-20260217-0001",
+      "details": "Created sale ID: c4984004-965b-44f3-a44a-fe147fcba8cc, Bon: BON-20260217-0002",
       "error": ""
     },
     {
       "name": "Get Sales History",
       "success": true,
-      "details": "Found 1 sales",
+      "details": "Found 2 sales",
       "error": ""
     },
     {
       "name": "Create NIR",
       "success": true,
-      "details": "Created NIR ID: 9e18b323-6316-4c0a-877b-4b4dd37e59bc, Number: NIR-20260217-0001",
+      "details": "Created NIR ID: 993354f6-31f5-408d-872d-9552cd19cd09, Number: NIR-20260217-0002",
       "error": ""
     },
     {
@@ -121,25 +121,25 @@
     {
       "name": "Sales Report",
       "success": true,
-      "details": "Total sales: 40.0",
+      "details": "Total sales: 80.0",
       "error": ""
     },
     {
       "name": "Top Products Report",
       "success": true,
-      "details": "Found 1 top products",
+      "details": "Found 2 top products",
       "error": ""
     },
     {
       "name": "Top Categories Report",
       "success": true,
-      "details": "Found 1 top categories",
+      "details": "Found 2 top categories",
       "error": ""
     },
     {
       "name": "Profit Report",
       "success": true,
-      "details": "Profit: 20.0",
+      "details": "Profit: 60.0",
       "error": ""
     },
     {

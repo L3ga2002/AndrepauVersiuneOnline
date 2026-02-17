@@ -1,8 +1,8 @@
 {
-  "total_tests": 23,
-  "passed_tests": 18,
-  "failed_tests": 5,
-  "success_rate": 78.26086956521739,
+  "total_tests": 31,
+  "passed_tests": 30,
+  "failed_tests": 1,
+  "success_rate": 96.7741935483871,
   "test_results": [
     {
       "name": "API Health Check",
@@ -36,15 +36,51 @@
     },
     {
       "name": "Create Supplier",
-      "success": false,
-      "details": "",
-      "error": "Create failed: 200 - {'id': 'bb52063f-864e-4dc9-8d67-8c5beb4b3288', 'nume': 'Test Supplier Ltd', 'telefon': '0721123456', 'email': 'test@supplier.com', 'adresa': 'Test Address 123', 'created_at': '2026-02-17T17:29:26.965825+00:00'}"
+      "success": true,
+      "details": "Created supplier ID: c6477608-d78e-4129-8bb5-51eb22774299",
+      "error": ""
+    },
+    {
+      "name": "Read Suppliers",
+      "success": true,
+      "details": "Found 8 suppliers",
+      "error": ""
+    },
+    {
+      "name": "Update Supplier",
+      "success": true,
+      "details": "Updated supplier name to: Updated Test Supplier Ltd",
+      "error": ""
     },
     {
       "name": "Create Product",
+      "success": true,
+      "details": "Created product ID: c4f70e89-7c4d-49ce-828b-4a9a8b6bb1b5",
+      "error": ""
+    },
+    {
+      "name": "Read Products",
+      "success": true,
+      "details": "Found 56 products",
+      "error": ""
+    },
+    {
+      "name": "Search Products",
+      "success": true,
+      "details": "Search returned 2 products",
+      "error": ""
+    },
+    {
+      "name": "Get Product by Barcode",
       "success": false,
       "details": "",
-      "error": "Create failed: 200 - {'id': '994c5e10-9bf3-4e87-8bd4-b660fab06066', 'nume': 'Test Product', 'categorie': 'Test Category', 'furnizor_id': None, 'cod_bare': '1234567890123', 'pret_achizitie': 10.0, 'pret_vanzare': 15.0, 'tva': 19.0, 'unitate': 'buc', 'stoc': 100.0, 'stoc_minim': 10.0, 'descriere': 'Test product description', 'created_at': '2026-02-17T17:29:27.093409+00:00'}"
+      "error": "Barcode lookup failed: 200 - {'id': '994c5e10-9bf3-4e87-8bd4-b660fab06066', 'nume': 'Test Product', 'categorie': 'Test Category', 'furnizor_id': None, 'cod_bare': '1234567890123', 'pret_achizitie': 10.0, 'pret_vanzare': 15.0, 'tva': 19.0, 'unitate': 'buc', 'stoc': 100.0, 'stoc_minim': 10.0, 'descriere': 'Test product description', 'created_at': '2026-02-17T17:29:27.093409+00:00'}"
+    },
+    {
+      "name": "Update Product",
+      "success": true,
+      "details": "Updated product: Updated Test Product",
+      "error": ""
     },
     {
       "name": "Get Categories",
@@ -54,26 +90,26 @@
     },
     {
       "name": "Create POS Sale",
-      "success": false,
-      "details": "",
-      "error": "Sale creation failed: 422 - {'detail': [{'type': 'string_type', 'loc': ['body', 'items', 0, 'product_id'], 'msg': 'Input should be a valid string', 'input': None, 'url': 'https://errors.pydantic.dev/2.12/v/string_type'}]}"
+      "success": true,
+      "details": "Created sale ID: aff685d2-b188-414c-a66d-2d64cacca7bb, Bon: BON-20260217-0001",
+      "error": ""
     },
     {
       "name": "Get Sales History",
-      "success": false,
-      "details": "",
-      "error": "Sales history failed: 200 - []"
+      "success": true,
+      "details": "Found 1 sales",
+      "error": ""
     },
     {
       "name": "Create NIR",
-      "success": false,
-      "details": "",
-      "error": "NIR creation failed: 422 - {'detail': [{'type': 'string_type', 'loc': ['body', 'furnizor_id'], 'msg': 'Input should be a valid string', 'input': None, 'url': 'https://errors.pydantic.dev/2.12/v/string_type'}, {'type': 'string_type', 'loc': ['body', 'items', 0, 'product_id'], 'msg': 'Input should be a valid string', 'input': None, 'url': 'https://errors.pydantic.dev/2.12/v/string_type'}]}"
+      "success": true,
+      "details": "Created NIR ID: 9e18b323-6316-4c0a-877b-4b4dd37e59bc, Number: NIR-20260217-0001",
+      "error": ""
     },
     {
       "name": "Stock Dashboard",
       "success": true,
-      "details": "Products: 55, Value: 73152.0",
+      "details": "Products: 56, Value: 74632.0",
       "error": ""
     },
     {
@@ -85,31 +121,31 @@
     {
       "name": "Sales Report",
       "success": true,
-      "details": "Total sales: 0",
+      "details": "Total sales: 40.0",
       "error": ""
     },
     {
       "name": "Top Products Report",
       "success": true,
-      "details": "Found 0 top products",
+      "details": "Found 1 top products",
       "error": ""
     },
     {
       "name": "Top Categories Report",
       "success": true,
-      "details": "Found 0 top categories",
+      "details": "Found 1 top categories",
       "error": ""
     },
     {
       "name": "Profit Report",
       "success": true,
-      "details": "Profit: 0",
+      "details": "Profit: 20.0",
       "error": ""
     },
     {
       "name": "Daily Sales Report",
       "success": true,
-      "details": "Found 0 daily records",
+      "details": "Found 1 daily records",
       "error": ""
     },
     {
@@ -139,7 +175,19 @@
     {
       "name": "Database Backup",
       "success": true,
-      "details": "Backup contains 55 products, 7 suppliers",
+      "details": "Backup contains 56 products, 8 suppliers",
+      "error": ""
+    },
+    {
+      "name": "Cleanup Test Product",
+      "success": true,
+      "details": "Test product deleted",
+      "error": ""
+    },
+    {
+      "name": "Cleanup Test Supplier",
+      "success": true,
+      "details": "Test supplier deleted",
       "error": ""
     }
   ]

@@ -148,12 +148,17 @@ function AppRoutes() {
 }
 
 function App() {
+  useEffect(() => {
+    registerServiceWorker();
+  }, []);
+
   return (
     <div className="App">
       <BrowserRouter>
         <AuthProvider>
           <InitApp />
           <AppRoutes />
+          <PWAInstallPrompt />
           <Toaster 
             position="top-right"
             toastOptions={{

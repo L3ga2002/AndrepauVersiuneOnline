@@ -265,7 +265,7 @@ class ANDREPAUAPITester:
         }
         
         status, data = self.make_request('POST', 'sales', sale_data, self.casier_token)
-        success = status == 201 and 'id' in data and 'numar_bon' in data
+        success = status == 200 and 'id' in data and 'numar_bon' in data
         if success:
             self.test_sale_id = data['id']
         

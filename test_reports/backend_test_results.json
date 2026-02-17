@@ -37,7 +37,7 @@
     {
       "name": "Create Supplier",
       "success": true,
-      "details": "Created supplier ID: 2f37ac03-a050-4f08-b011-e67113a83614",
+      "details": "Created supplier ID: cbfac0ca-9c0c-44a5-a429-b1c23d4f3365",
       "error": ""
     },
     {
@@ -55,7 +55,7 @@
     {
       "name": "Create Product",
       "success": true,
-      "details": "Created product ID: cb28b13d-d364-47b5-b0cf-0ca9948cce94",
+      "details": "Created product ID: da44c4cf-9771-4a07-9dad-0b2c34fb8d81",
       "error": ""
     },
     {
@@ -91,25 +91,25 @@
     {
       "name": "Create POS Sale",
       "success": true,
-      "details": "Created sale ID: c4984004-965b-44f3-a44a-fe147fcba8cc, Bon: BON-20260217-0002",
+      "details": "Created sale ID: c3a6e898-3377-4935-b4f1-47f70713a510, Bon: BON-20260217-0005",
       "error": ""
     },
     {
       "name": "Get Sales History",
       "success": true,
-      "details": "Found 2 sales",
+      "details": "Found 5 sales",
       "error": ""
     },
     {
       "name": "Create NIR",
       "success": true,
-      "details": "Created NIR ID: 993354f6-31f5-408d-872d-9552cd19cd09, Number: NIR-20260217-0002",
+      "details": "Created NIR ID: 913bd23a-38f4-43e8-8b13-6d968808295b, Number: NIR-20260217-0003",
       "error": ""
     },
     {
       "name": "Stock Dashboard",
       "success": true,
-      "details": "Products: 56, Value: 74632.0",
+      "details": "Products: 56, Value: 74576.0",
       "error": ""
     },
     {
@@ -121,25 +121,25 @@
     {
       "name": "Sales Report",
       "success": true,
-      "details": "Total sales: 80.0",
+      "details": "Total sales: 190.0",
       "error": ""
     },
     {
       "name": "Top Products Report",
       "success": true,
-      "details": "Found 2 top products",
+      "details": "Found 4 top products",
       "error": ""
     },
     {
       "name": "Top Categories Report",
       "success": true,
-      "details": "Found 2 top categories",
+      "details": "Found 3 top categories",
       "error": ""
     },
     {
       "name": "Profit Report",
       "success": true,
-      "details": "Profit: 60.0",
+      "details": "Profit: 114.0",
       "error": ""
     },
     {

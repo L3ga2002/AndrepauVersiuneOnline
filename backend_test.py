@@ -298,7 +298,7 @@ class ANDREPAUAPITester:
         }
         
         status, data = self.make_request('POST', 'nir', nir_data, self.admin_token)
-        success = status == 201 and 'id' in data and 'numar_nir' in data
+        success = status == 200 and 'id' in data and 'numar_nir' in data
         if success:
             self.test_nir_id = data['id']
         

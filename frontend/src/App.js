@@ -11,9 +11,26 @@ import ReportsPage from "./pages/ReportsPage";
 import SuppliersPage from "./pages/SuppliersPage";
 import SettingsPage from "./pages/SettingsPage";
 import Layout from "./components/Layout";
+import PWAInstallPrompt from "./components/PWAInstallPrompt";
 import axios from "axios";
 
 const API_URL = process.env.REACT_APP_BACKEND_URL + '/api';
+
+// Register service worker for PWA
+const registerServiceWorker = () => {
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker
+        .register('/service-worker.js')
+        .then((registration) => {
+          console.log('Service Worker registered:', registration.scope);
+        })
+        .catch((error) => {
+          console.log('Service Worker registration failed:', error);
+        });
+    });
+  }
+};
 
 // Protected Route component
 const ProtectedRoute = ({ children }) => {

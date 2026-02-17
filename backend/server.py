@@ -1,4 +1,5 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -6,10 +7,13 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List
+from typing import List, Optional
 import uuid
-from datetime import datetime, timezone
-
+from datetime import datetime, timezone, timedelta
+import jwt
+import bcrypt
+from bson import ObjectId
+import json
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -19,52 +23,773 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# Create the main app without a prefix
-app = FastAPI()
+# JWT Config
+JWT_SECRET = os.environ.get('JWT_SECRET', 'andrepau-secret-key-2024')
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRATION_HOURS = 24
+
+# Create the main app
+app = FastAPI(title="ANDREPAU POS API")
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
+security = HTTPBearer()
 
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# ==================== MODELS ====================
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    full_name: str
+    role: str = "casier"  # admin or casier
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+class UserResponse(BaseModel):
+    id: str
+    username: str
+    full_name: str
+    role: str
+    created_at: str
+
+class ProductCreate(BaseModel):
+    nume: str
+    categorie: str
+    furnizor_id: Optional[str] = None
+    cod_bare: Optional[str] = None
+    pret_achizitie: float
+    pret_vanzare: float
+    tva: float = 19.0
+    unitate: str = "buc"  # buc, sac, kg, metru, litru, rola
+    stoc: float = 0
+    stoc_minim: float = 5
+    descriere: Optional[str] = None
+
+class ProductUpdate(BaseModel):
+    nume: Optional[str] = None
+    categorie: Optional[str] = None
+    furnizor_id: Optional[str] = None
+    cod_bare: Optional[str] = None
+    pret_achizitie: Optional[float] = None
+    pret_vanzare: Optional[float] = None
+    tva: Optional[float] = None
+    unitate: Optional[str] = None
+    stoc: Optional[float] = None
+    stoc_minim: Optional[float] = None
+    descriere: Optional[str] = None
+
+class ProductResponse(BaseModel):
+    id: str
+    nume: str
+    categorie: str
+    furnizor_id: Optional[str] = None
+    cod_bare: Optional[str] = None
+    pret_achizitie: float
+    pret_vanzare: float
+    tva: float
+    unitate: str
+    stoc: float
+    stoc_minim: float
+    descriere: Optional[str] = None
+    created_at: str
+
+class SupplierCreate(BaseModel):
+    nume: str
+    telefon: Optional[str] = None
+    email: Optional[str] = None
+    adresa: Optional[str] = None
+
+class SupplierResponse(BaseModel):
+    id: str
+    nume: str
+    telefon: Optional[str] = None
+    email: Optional[str] = None
+    adresa: Optional[str] = None
+    created_at: str
+
+class SaleItem(BaseModel):
+    product_id: str
+    nume: str
+    cantitate: float
+    pret_unitar: float
+    tva: float
+
+class SaleCreate(BaseModel):
+    items: List[SaleItem]
+    subtotal: float
+    tva_total: float
+    total: float
+    discount_percent: float = 0
+    metoda_plata: str  # numerar, card, combinat
+    suma_numerar: float = 0
+    suma_card: float = 0
+    casier_id: str
+
+class SaleResponse(BaseModel):
+    id: str
+    numar_bon: str
+    items: List[SaleItem]
+    subtotal: float
+    tva_total: float
+    total: float
+    discount_percent: float
+    metoda_plata: str
+    suma_numerar: float
+    suma_card: float
+    casier_id: str
+    casier_nume: str
+    created_at: str
+
+class NIRItem(BaseModel):
+    product_id: str
+    nume: str
+    cantitate: float
+    pret_achizitie: float
+
+class NIRCreate(BaseModel):
+    furnizor_id: str
+    numar_factura: str
+    items: List[NIRItem]
+    total: float
+
+class NIRResponse(BaseModel):
+    id: str
+    numar_nir: str
+    furnizor_id: str
+    furnizor_nume: str
+    numar_factura: str
+    items: List[NIRItem]
+    total: float
+    created_at: str
+
+# ==================== AUTH HELPERS ====================
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def verify_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+
+def create_token(user_id: str, role: str) -> str:
+    payload = {
+        "user_id": user_id,
+        "role": role,
+        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user = await db.users.find_one({"id": payload["user_id"]}, {"_id": 0})
+        if not user:
+            raise HTTPException(status_code=401, detail="Utilizator negăsit")
+        return user
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expirat")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Token invalid")
+
+async def require_admin(user: dict = Depends(get_current_user)):
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Acces permis doar pentru admin")
+    return user
+
+# ==================== AUTH ROUTES ====================
+
+@api_router.post("/auth/register", response_model=UserResponse)
+async def register(user: UserCreate):
+    existing = await db.users.find_one({"username": user.username})
+    if existing:
+        raise HTTPException(status_code=400, detail="Username-ul există deja")
     
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    user_doc = {
+        "id": str(uuid.uuid4()),
+        "username": user.username,
+        "password": hash_password(user.password),
+        "full_name": user.full_name,
+        "role": user.role,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.users.insert_one(user_doc)
+    
+    return UserResponse(
+        id=user_doc["id"],
+        username=user_doc["username"],
+        full_name=user_doc["full_name"],
+        role=user_doc["role"],
+        created_at=user_doc["created_at"]
+    )
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
+@api_router.post("/auth/login")
+async def login(credentials: UserLogin):
+    user = await db.users.find_one({"username": credentials.username}, {"_id": 0})
+    if not user or not verify_password(credentials.password, user["password"]):
+        raise HTTPException(status_code=401, detail="Credențiale invalide")
+    
+    token = create_token(user["id"], user["role"])
+    return {
+        "token": token,
+        "user": {
+            "id": user["id"],
+            "username": user["username"],
+            "full_name": user["full_name"],
+            "role": user["role"]
+        }
+    }
 
-# Add your routes to the router instead of directly to app
+@api_router.get("/auth/me", response_model=UserResponse)
+async def get_me(user: dict = Depends(get_current_user)):
+    return UserResponse(
+        id=user["id"],
+        username=user["username"],
+        full_name=user["full_name"],
+        role=user["role"],
+        created_at=user["created_at"]
+    )
+
+@api_router.get("/users", response_model=List[UserResponse])
+async def get_users(user: dict = Depends(require_admin)):
+    users = await db.users.find({}, {"_id": 0, "password": 0}).to_list(1000)
+    return [UserResponse(**u) for u in users]
+
+@api_router.delete("/users/{user_id}")
+async def delete_user(user_id: str, admin: dict = Depends(require_admin)):
+    if admin["id"] == user_id:
+        raise HTTPException(status_code=400, detail="Nu vă puteți șterge propriu cont")
+    result = await db.users.delete_one({"id": user_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Utilizator negăsit")
+    return {"message": "Utilizator șters"}
+
+# ==================== PRODUCT ROUTES ====================
+
+@api_router.post("/products", response_model=ProductResponse)
+async def create_product(product: ProductCreate, user: dict = Depends(require_admin)):
+    product_doc = {
+        "id": str(uuid.uuid4()),
+        **product.model_dump(),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.products.insert_one(product_doc)
+    return ProductResponse(**{k: v for k, v in product_doc.items() if k != "_id"})
+
+@api_router.get("/products", response_model=List[ProductResponse])
+async def get_products(
+    search: Optional[str] = None,
+    categorie: Optional[str] = None,
+    low_stock: Optional[bool] = None,
+    user: dict = Depends(get_current_user)
+):
+    query = {}
+    if search:
+        query["$or"] = [
+            {"nume": {"$regex": search, "$options": "i"}},
+            {"cod_bare": {"$regex": search, "$options": "i"}}
+        ]
+    if categorie:
+        query["categorie"] = categorie
+    if low_stock:
+        query["$expr"] = {"$lte": ["$stoc", "$stoc_minim"]}
+    
+    products = await db.products.find(query, {"_id": 0}).to_list(10000)
+    return [ProductResponse(**p) for p in products]
+
+@api_router.get("/products/barcode/{barcode}", response_model=ProductResponse)
+async def get_product_by_barcode(barcode: str, user: dict = Depends(get_current_user)):
+    product = await db.products.find_one({"cod_bare": barcode}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Produs negăsit")
+    return ProductResponse(**product)
+
+@api_router.get("/products/{product_id}", response_model=ProductResponse)
+async def get_product(product_id: str, user: dict = Depends(get_current_user)):
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Produs negăsit")
+    return ProductResponse(**product)
+
+@api_router.put("/products/{product_id}", response_model=ProductResponse)
+async def update_product(product_id: str, product: ProductUpdate, user: dict = Depends(require_admin)):
+    update_data = {k: v for k, v in product.model_dump().items() if v is not None}
+    if not update_data:
+        raise HTTPException(status_code=400, detail="Nicio modificare")
+    
+    result = await db.products.update_one({"id": product_id}, {"$set": update_data})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Produs negăsit")
+    
+    updated = await db.products.find_one({"id": product_id}, {"_id": 0})
+    return ProductResponse(**updated)
+
+@api_router.delete("/products/{product_id}")
+async def delete_product(product_id: str, user: dict = Depends(require_admin)):
+    result = await db.products.delete_one({"id": product_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Produs negăsit")
+    return {"message": "Produs șters"}
+
+@api_router.get("/categories")
+async def get_categories(user: dict = Depends(get_current_user)):
+    categories = await db.products.distinct("categorie")
+    return categories
+
+# ==================== SUPPLIER ROUTES ====================
+
+@api_router.post("/suppliers", response_model=SupplierResponse)
+async def create_supplier(supplier: SupplierCreate, user: dict = Depends(require_admin)):
+    supplier_doc = {
+        "id": str(uuid.uuid4()),
+        **supplier.model_dump(),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.suppliers.insert_one(supplier_doc)
+    return SupplierResponse(**{k: v for k, v in supplier_doc.items() if k != "_id"})
+
+@api_router.get("/suppliers", response_model=List[SupplierResponse])
+async def get_suppliers(user: dict = Depends(get_current_user)):
+    suppliers = await db.suppliers.find({}, {"_id": 0}).to_list(1000)
+    return [SupplierResponse(**s) for s in suppliers]
+
+@api_router.get("/suppliers/{supplier_id}", response_model=SupplierResponse)
+async def get_supplier(supplier_id: str, user: dict = Depends(get_current_user)):
+    supplier = await db.suppliers.find_one({"id": supplier_id}, {"_id": 0})
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Furnizor negăsit")
+    return SupplierResponse(**supplier)
+
+@api_router.put("/suppliers/{supplier_id}", response_model=SupplierResponse)
+async def update_supplier(supplier_id: str, supplier: SupplierCreate, user: dict = Depends(require_admin)):
+    result = await db.suppliers.update_one({"id": supplier_id}, {"$set": supplier.model_dump()})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Furnizor negăsit")
+    updated = await db.suppliers.find_one({"id": supplier_id}, {"_id": 0})
+    return SupplierResponse(**updated)
+
+@api_router.delete("/suppliers/{supplier_id}")
+async def delete_supplier(supplier_id: str, user: dict = Depends(require_admin)):
+    result = await db.suppliers.delete_one({"id": supplier_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Furnizor negăsit")
+    return {"message": "Furnizor șters"}
+
+# ==================== SALES ROUTES ====================
+
+async def generate_bon_number():
+    today = datetime.now(timezone.utc).strftime("%Y%m%d")
+    count = await db.sales.count_documents({"numar_bon": {"$regex": f"^BON-{today}"}})
+    return f"BON-{today}-{str(count + 1).zfill(4)}"
+
+@api_router.post("/sales", response_model=SaleResponse)
+async def create_sale(sale: SaleCreate, user: dict = Depends(get_current_user)):
+    # Generate bon number
+    numar_bon = await generate_bon_number()
+    
+    # Get casier name
+    casier = await db.users.find_one({"id": sale.casier_id}, {"_id": 0})
+    casier_nume = casier["full_name"] if casier else "Necunoscut"
+    
+    sale_doc = {
+        "id": str(uuid.uuid4()),
+        "numar_bon": numar_bon,
+        **sale.model_dump(),
+        "casier_nume": casier_nume,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    # Update stock for each item
+    for item in sale.items:
+        await db.products.update_one(
+            {"id": item.product_id},
+            {"$inc": {"stoc": -item.cantitate}}
+        )
+    
+    await db.sales.insert_one(sale_doc)
+    return SaleResponse(**{k: v for k, v in sale_doc.items() if k != "_id"})
+
+@api_router.get("/sales", response_model=List[SaleResponse])
+async def get_sales(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    user: dict = Depends(get_current_user)
+):
+    query = {}
+    if start_date:
+        query["created_at"] = {"$gte": start_date}
+    if end_date:
+        if "created_at" in query:
+            query["created_at"]["$lte"] = end_date
+        else:
+            query["created_at"] = {"$lte": end_date}
+    
+    sales = await db.sales.find(query, {"_id": 0}).sort("created_at", -1).to_list(10000)
+    return [SaleResponse(**s) for s in sales]
+
+@api_router.get("/sales/{sale_id}", response_model=SaleResponse)
+async def get_sale(sale_id: str, user: dict = Depends(get_current_user)):
+    sale = await db.sales.find_one({"id": sale_id}, {"_id": 0})
+    if not sale:
+        raise HTTPException(status_code=404, detail="Vânzare negăsită")
+    return SaleResponse(**sale)
+
+# ==================== NIR ROUTES ====================
+
+async def generate_nir_number():
+    today = datetime.now(timezone.utc).strftime("%Y%m%d")
+    count = await db.nirs.count_documents({"numar_nir": {"$regex": f"^NIR-{today}"}})
+    return f"NIR-{today}-{str(count + 1).zfill(4)}"
+
+@api_router.post("/nir", response_model=NIRResponse)
+async def create_nir(nir: NIRCreate, user: dict = Depends(require_admin)):
+    numar_nir = await generate_nir_number()
+    
+    # Get supplier name
+    supplier = await db.suppliers.find_one({"id": nir.furnizor_id}, {"_id": 0})
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Furnizor negăsit")
+    
+    nir_doc = {
+        "id": str(uuid.uuid4()),
+        "numar_nir": numar_nir,
+        **nir.model_dump(),
+        "furnizor_nume": supplier["nume"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    # Update stock for each item
+    for item in nir.items:
+        await db.products.update_one(
+            {"id": item.product_id},
+            {"$inc": {"stoc": item.cantitate}}
+        )
+    
+    await db.nirs.insert_one(nir_doc)
+    return NIRResponse(**{k: v for k, v in nir_doc.items() if k != "_id"})
+
+@api_router.get("/nir", response_model=List[NIRResponse])
+async def get_nirs(user: dict = Depends(get_current_user)):
+    nirs = await db.nirs.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return [NIRResponse(**n) for n in nirs]
+
+# ==================== STOCK ROUTES ====================
+
+@api_router.get("/stock/dashboard")
+async def get_stock_dashboard(user: dict = Depends(get_current_user)):
+    total_products = await db.products.count_documents({})
+    
+    # Products with low stock
+    pipeline_low = [
+        {"$match": {"$expr": {"$lte": ["$stoc", "$stoc_minim"]}, "stoc": {"$gt": 0}}},
+        {"$count": "count"}
+    ]
+    low_stock_result = await db.products.aggregate(pipeline_low).to_list(1)
+    low_stock = low_stock_result[0]["count"] if low_stock_result else 0
+    
+    # Products out of stock
+    out_of_stock = await db.products.count_documents({"stoc": {"$lte": 0}})
+    
+    # Total stock value
+    pipeline_value = [
+        {"$group": {"_id": None, "total": {"$sum": {"$multiply": ["$stoc", "$pret_achizitie"]}}}}
+    ]
+    value_result = await db.products.aggregate(pipeline_value).to_list(1)
+    total_value = value_result[0]["total"] if value_result else 0
+    
+    return {
+        "total_products": total_products,
+        "low_stock": low_stock,
+        "out_of_stock": out_of_stock,
+        "total_value": round(total_value, 2)
+    }
+
+@api_router.get("/stock/alerts")
+async def get_stock_alerts(user: dict = Depends(get_current_user)):
+    pipeline = [
+        {"$match": {"$expr": {"$lte": ["$stoc", "$stoc_minim"]}}},
+        {"$project": {"_id": 0}}
+    ]
+    alerts = await db.products.aggregate(pipeline).to_list(100)
+    return alerts
+
+# ==================== REPORTS ROUTES ====================
+
+@api_router.get("/reports/sales")
+async def get_sales_report(
+    period: str = "today",  # today, week, month, year
+    user: dict = Depends(get_current_user)
+):
+    now = datetime.now(timezone.utc)
+    
+    if period == "today":
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == "week":
+        start = now - timedelta(days=7)
+    elif period == "month":
+        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    elif period == "year":
+        start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    pipeline = [
+        {"$match": {"created_at": {"$gte": start.isoformat()}}},
+        {"$group": {
+            "_id": None,
+            "total_sales": {"$sum": "$total"},
+            "total_tva": {"$sum": "$tva_total"},
+            "count": {"$sum": 1},
+            "cash": {"$sum": "$suma_numerar"},
+            "card": {"$sum": "$suma_card"}
+        }}
+    ]
+    
+    result = await db.sales.aggregate(pipeline).to_list(1)
+    
+    if result:
+        return {
+            "total_sales": round(result[0]["total_sales"], 2),
+            "total_tva": round(result[0]["total_tva"], 2),
+            "count": result[0]["count"],
+            "cash": round(result[0]["cash"], 2),
+            "card": round(result[0]["card"], 2)
+        }
+    return {"total_sales": 0, "total_tva": 0, "count": 0, "cash": 0, "card": 0}
+
+@api_router.get("/reports/top-products")
+async def get_top_products(limit: int = 10, user: dict = Depends(get_current_user)):
+    pipeline = [
+        {"$unwind": "$items"},
+        {"$group": {
+            "_id": "$items.product_id",
+            "nume": {"$first": "$items.nume"},
+            "total_cantitate": {"$sum": "$items.cantitate"},
+            "total_valoare": {"$sum": {"$multiply": ["$items.cantitate", "$items.pret_unitar"]}}
+        }},
+        {"$sort": {"total_valoare": -1}},
+        {"$limit": limit}
+    ]
+    
+    results = await db.sales.aggregate(pipeline).to_list(limit)
+    return [
+        {
+            "product_id": r["_id"],
+            "nume": r["nume"],
+            "total_cantitate": round(r["total_cantitate"], 2),
+            "total_valoare": round(r["total_valoare"], 2)
+        }
+        for r in results
+    ]
+
+@api_router.get("/reports/top-categories")
+async def get_top_categories(user: dict = Depends(get_current_user)):
+    pipeline = [
+        {"$unwind": "$items"},
+        {"$lookup": {
+            "from": "products",
+            "localField": "items.product_id",
+            "foreignField": "id",
+            "as": "product"
+        }},
+        {"$unwind": {"path": "$product", "preserveNullAndEmptyArrays": True}},
+        {"$group": {
+            "_id": "$product.categorie",
+            "total_valoare": {"$sum": {"$multiply": ["$items.cantitate", "$items.pret_unitar"]}}
+        }},
+        {"$sort": {"total_valoare": -1}},
+        {"$limit": 10}
+    ]
+    
+    results = await db.sales.aggregate(pipeline).to_list(10)
+    return [
+        {
+            "categorie": r["_id"] or "Necunoscut",
+            "total_valoare": round(r["total_valoare"], 2)
+        }
+        for r in results
+    ]
+
+@api_router.get("/reports/profit")
+async def get_profit_report(period: str = "month", user: dict = Depends(require_admin)):
+    now = datetime.now(timezone.utc)
+    
+    if period == "today":
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == "week":
+        start = now - timedelta(days=7)
+    elif period == "month":
+        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    # Get all sales in period
+    sales = await db.sales.find(
+        {"created_at": {"$gte": start.isoformat()}},
+        {"_id": 0}
+    ).to_list(10000)
+    
+    total_vanzari = 0
+    total_cost = 0
+    
+    for sale in sales:
+        for item in sale["items"]:
+            total_vanzari += item["cantitate"] * item["pret_unitar"]
+            # Get product cost
+            product = await db.products.find_one({"id": item["product_id"]}, {"_id": 0})
+            if product:
+                total_cost += item["cantitate"] * product["pret_achizitie"]
+    
+    profit = total_vanzari - total_cost
+    margin = (profit / total_vanzari * 100) if total_vanzari > 0 else 0
+    
+    return {
+        "total_vanzari": round(total_vanzari, 2),
+        "total_cost": round(total_cost, 2),
+        "profit": round(profit, 2),
+        "margin_percent": round(margin, 2)
+    }
+
+@api_router.get("/reports/daily-sales")
+async def get_daily_sales(days: int = 30, user: dict = Depends(get_current_user)):
+    start = datetime.now(timezone.utc) - timedelta(days=days)
+    
+    pipeline = [
+        {"$match": {"created_at": {"$gte": start.isoformat()}}},
+        {"$addFields": {
+            "date": {"$substr": ["$created_at", 0, 10]}
+        }},
+        {"$group": {
+            "_id": "$date",
+            "total": {"$sum": "$total"},
+            "count": {"$sum": 1}
+        }},
+        {"$sort": {"_id": 1}}
+    ]
+    
+    results = await db.sales.aggregate(pipeline).to_list(days)
+    return [{"date": r["_id"], "total": round(r["total"], 2), "count": r["count"]} for r in results]
+
+# ==================== BACKUP ROUTE ====================
+
+@api_router.get("/backup")
+async def create_backup(user: dict = Depends(require_admin)):
+    backup_data = {
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "products": await db.products.find({}, {"_id": 0}).to_list(100000),
+        "suppliers": await db.suppliers.find({}, {"_id": 0}).to_list(10000),
+        "sales": await db.sales.find({}, {"_id": 0}).to_list(100000),
+        "nirs": await db.nirs.find({}, {"_id": 0}).to_list(10000),
+        "users": await db.users.find({}, {"_id": 0, "password": 0}).to_list(1000)
+    }
+    return backup_data
+
+# ==================== SEED DATA ====================
+
+@api_router.post("/seed")
+async def seed_database():
+    # Check if already seeded
+    existing_admin = await db.users.find_one({"username": "admin"})
+    if existing_admin:
+        return {"message": "Database deja populată"}
+    
+    # Create admin user
+    admin_doc = {
+        "id": str(uuid.uuid4()),
+        "username": "admin",
+        "password": hash_password("admin123"),
+        "full_name": "Administrator",
+        "role": "admin",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.users.insert_one(admin_doc)
+    
+    # Create casier user
+    casier_doc = {
+        "id": str(uuid.uuid4()),
+        "username": "casier",
+        "password": hash_password("casier123"),
+        "full_name": "Casier Principal",
+        "role": "casier",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.users.insert_one(casier_doc)
+    
+    # Create suppliers
+    suppliers = [
+        {"id": str(uuid.uuid4()), "nume": "Dedeman S.R.L.", "telefon": "0721000001", "email": "contact@dedeman.ro", "adresa": "București", "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "nume": "Hornbach România", "telefon": "0721000002", "email": "contact@hornbach.ro", "adresa": "Cluj-Napoca", "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "nume": "Leroy Merlin", "telefon": "0721000003", "email": "contact@leroymerlin.ro", "adresa": "Timișoara", "created_at": datetime.now(timezone.utc).isoformat()},
+    ]
+    await db.suppliers.insert_many(suppliers)
+    
+    # Create products
+    categories = ["Materiale Construcții", "Scule Electrice", "Scule Manuale", "Feronerie", "Instalații Sanitare", "Electrice", "Vopsele", "Consumabile"]
+    units = ["buc", "sac", "kg", "metru", "litru", "rola"]
+    
+    products = [
+        # Materiale Construcții
+        {"id": str(uuid.uuid4()), "nume": "Ciment Portland 40kg", "categorie": "Materiale Construcții", "furnizor_id": suppliers[0]["id"], "cod_bare": "5941234000001", "pret_achizitie": 28.0, "pret_vanzare": 35.0, "tva": 19.0, "unitate": "sac", "stoc": 150, "stoc_minim": 20, "descriere": "Ciment de înaltă calitate", "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "nume": "Var hidratat 20kg", "categorie": "Materiale Construcții", "furnizor_id": suppliers[0]["id"], "cod_bare": "5941234000002", "pret_achizitie": 12.0, "pret_vanzare": 18.0, "tva": 19.0, "unitate": "sac", "stoc": 80, "stoc_minim": 15, "descriere": "Var pentru construcții", "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "nume": "Nisip fin 40kg", "categorie": "Materiale Construcții", "furnizor_id": suppliers[0]["id"], "cod_bare": "5941234000003", "pret_achizitie": 8.0, "pret_vanzare": 12.0, "tva": 19.0, "unitate": "sac", "stoc": 200, "stoc_minim": 30, "descriere": "Nisip pentru tencuială", "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "nume": "BCA 60x20x25", "categorie": "Materiale Construcții", "furnizor_id": suppliers[1]["id"], "cod_bare": "5941234000004", "pret_achizitie": 6.5, "pret_vanzare": 9.0, "tva": 19.0, "unitate": "buc", "stoc": 500, "stoc_minim": 50, "descriere": "Blocuri BCA", "created_at": datetime.now(timezone.utc).isoformat()},
+        
+        # Scule Electrice
+        {"id": str(uuid.uuid4()), "nume": "Bormaşină Bosch 750W", "categorie": "Scule Electrice", "furnizor_id": suppliers[1]["id"], "cod_bare": "5941234000010", "pret_achizitie": 180.0, "pret_vanzare": 250.0, "tva": 19.0, "unitate": "buc", "stoc": 15, "stoc_minim": 3, "descriere": "Bormaşină profesională", "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "nume": "Flex 125mm 1200W", "categorie": "Scule Electrice", "furnizor_id": suppliers[1]["id"], "cod_bare": "5941234000011", "pret_achizitie": 120.0, "pret_vanzare": 170.0, "tva": 19.0, "unitate": "buc", "stoc": 12, "stoc_minim": 2, "descriere": "Polizor unghiular", "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "nume": "Șurubelniță electrică", "categorie": "Scule Electrice", "furnizor_id": suppliers[2]["id"], "cod_bare": "5941234000012", "pret_achizitie": 85.0, "pret_vanzare": 120.0, "tva": 19.0, "unitate": "buc", "stoc": 20, "stoc_minim": 5, "descriere": "Autofiletantă cu acumulator", "created_at": datetime.now(timezone.utc).isoformat()},
+        
+        # Scule Manuale
+        {"id": str(uuid.uuid4()), "nume": "Ciocan 500g", "categorie": "Scule Manuale", "furnizor_id": suppliers[0]["id"], "cod_bare": "5941234000020", "pret_achizitie": 25.0, "pret_vanzare": 38.0, "tva": 19.0, "unitate": "buc", "stoc": 40, "stoc_minim": 10, "descriere": "Ciocan cu mâner fibră", "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "nume": "Set șurubelnițe 6buc", "categorie": "Scule Manuale", "furnizor_id": suppliers[2]["id"], "cod_bare": "5941234000021", "pret_achizitie": 35.0, "pret_vanzare": 55.0, "tva": 19.0, "unitate": "buc", "stoc": 25, "stoc_minim": 5, "descriere": "Set complet șurubelnițe", "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "nume": "Cheie reglabilă 300mm", "categorie": "Scule Manuale", "furnizor_id": suppliers[1]["id"], "cod_bare": "5941234000022", "pret_achizitie": 45.0, "pret_vanzare": 65.0, "tva": 19.0, "unitate": "buc", "stoc": 18, "stoc_minim": 4, "descriere": "Cheie franceză", "created_at": datetime.now(timezone.utc).isoformat()},
+        
+        # Feronerie
+        {"id": str(uuid.uuid4()), "nume": "Șuruburi 4x40 100buc", "categorie": "Feronerie", "furnizor_id": suppliers[0]["id"], "cod_bare": "5941234000030", "pret_achizitie": 8.0, "pret_vanzare": 14.0, "tva": 19.0, "unitate": "buc", "stoc": 100, "stoc_minim": 20, "descriere": "Șuruburi autofiletante", "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "nume": "Diblu plastic 8mm 100buc", "categorie": "Feronerie", "furnizor_id": suppliers[0]["id"], "cod_bare": "5941234000031", "pret_achizitie": 6.0, "pret_vanzare": 10.0, "tva": 19.0, "unitate": "buc", "stoc": 150, "stoc_minim": 30, "descriere": "Dibluri pentru BCA", "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "nume": "Balama ușă 100mm", "categorie": "Feronerie", "furnizor_id": suppliers[2]["id"], "cod_bare": "5941234000032", "pret_achizitie": 12.0, "pret_vanzare": 18.0, "tva": 19.0, "unitate": "buc", "stoc": 60, "stoc_minim": 10, "descriere": "Balama din oțel", "created_at": datetime.now(timezone.utc).isoformat()},
+        
+        # Instalații Sanitare
+        {"id": str(uuid.uuid4()), "nume": "Țeavă PPR 25mm", "categorie": "Instalații Sanitare", "furnizor_id": suppliers[1]["id"], "cod_bare": "5941234000040", "pret_achizitie": 3.5, "pret_vanzare": 5.5, "tva": 19.0, "unitate": "metru", "stoc": 500, "stoc_minim": 100, "descriere": "Țeavă apă caldă/rece", "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "nume": "Robinet colț 1/2", "categorie": "Instalații Sanitare", "furnizor_id": suppliers[1]["id"], "cod_bare": "5941234000041", "pret_achizitie": 18.0, "pret_vanzare": 28.0, "tva": 19.0, "unitate": "buc", "stoc": 40, "stoc_minim": 10, "descriere": "Robinet colțar", "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "nume": "Sifon chiuvetă", "categorie": "Instalații Sanitare", "furnizor_id": suppliers[2]["id"], "cod_bare": "5941234000042", "pret_achizitie": 15.0, "pret_vanzare": 25.0, "tva": 19.0, "unitate": "buc", "stoc": 35, "stoc_minim": 8, "descriere": "Sifon plastic", "created_at": datetime.now(timezone.utc).isoformat()},
+        
+        # Electrice
+        {"id": str(uuid.uuid4()), "nume": "Cablu electric 2.5mm", "categorie": "Electrice", "furnizor_id": suppliers[0]["id"], "cod_bare": "5941234000050", "pret_achizitie": 4.0, "pret_vanzare": 6.5, "tva": 19.0, "unitate": "metru", "stoc": 800, "stoc_minim": 200, "descriere": "Cablu FY cupru", "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "nume": "Priză simplă", "categorie": "Electrice", "furnizor_id": suppliers[2]["id"], "cod_bare": "5941234000051", "pret_achizitie": 8.0, "pret_vanzare": 14.0, "tva": 19.0, "unitate": "buc", "stoc": 100, "stoc_minim": 25, "descriere": "Priză cu împământare", "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "nume": "Întrerupător simplu", "categorie": "Electrice", "furnizor_id": suppliers[2]["id"], "cod_bare": "5941234000052", "pret_achizitie": 7.0, "pret_vanzare": 12.0, "tva": 19.0, "unitate": "buc", "stoc": 90, "stoc_minim": 20, "descriere": "Întrerupător alb", "created_at": datetime.now(timezone.utc).isoformat()},
+        
+        # Vopsele
+        {"id": str(uuid.uuid4()), "nume": "Vopsea lavabilă albă 15L", "categorie": "Vopsele", "furnizor_id": suppliers[1]["id"], "cod_bare": "5941234000060", "pret_achizitie": 85.0, "pret_vanzare": 120.0, "tva": 19.0, "unitate": "buc", "stoc": 30, "stoc_minim": 5, "descriere": "Vopsea interior", "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "nume": "Grund alb 10L", "categorie": "Vopsele", "furnizor_id": suppliers[1]["id"], "cod_bare": "5941234000061", "pret_achizitie": 55.0, "pret_vanzare": 80.0, "tva": 19.0, "unitate": "buc", "stoc": 25, "stoc_minim": 5, "descriere": "Grund acrilic", "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "nume": "Vopsea email albastru 0.75L", "categorie": "Vopsele", "furnizor_id": suppliers[0]["id"], "cod_bare": "5941234000062", "pret_achizitie": 28.0, "pret_vanzare": 42.0, "tva": 19.0, "unitate": "buc", "stoc": 45, "stoc_minim": 10, "descriere": "Email pentru metal", "created_at": datetime.now(timezone.utc).isoformat()},
+        
+        # Consumabile
+        {"id": str(uuid.uuid4()), "nume": "Bandă izolatoare", "categorie": "Consumabile", "furnizor_id": suppliers[0]["id"], "cod_bare": "5941234000070", "pret_achizitie": 3.0, "pret_vanzare": 5.0, "tva": 19.0, "unitate": "buc", "stoc": 200, "stoc_minim": 50, "descriere": "Bandă PVC", "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "nume": "Silicon transparent 280ml", "categorie": "Consumabile", "furnizor_id": suppliers[2]["id"], "cod_bare": "5941234000071", "pret_achizitie": 12.0, "pret_vanzare": 18.0, "tva": 19.0, "unitate": "buc", "stoc": 80, "stoc_minim": 20, "descriere": "Silicon universal", "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "nume": "Disc flex 125mm metal", "categorie": "Consumabile", "furnizor_id": suppliers[1]["id"], "cod_bare": "5941234000072", "pret_achizitie": 4.0, "pret_vanzare": 7.0, "tva": 19.0, "unitate": "buc", "stoc": 150, "stoc_minim": 30, "descriere": "Disc abraziv", "created_at": datetime.now(timezone.utc).isoformat()},
+        
+        # Low stock products for testing alerts
+        {"id": str(uuid.uuid4()), "nume": "Furtun grădină 20m", "categorie": "Consumabile", "furnizor_id": suppliers[0]["id"], "cod_bare": "5941234000080", "pret_achizitie": 45.0, "pret_vanzare": 65.0, "tva": 19.0, "unitate": "buc", "stoc": 3, "stoc_minim": 5, "descriere": "Furtun cu armătură", "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "nume": "Mănuși protecție", "categorie": "Consumabile", "furnizor_id": suppliers[2]["id"], "cod_bare": "5941234000081", "pret_achizitie": 8.0, "pret_vanzare": 15.0, "tva": 19.0, "unitate": "buc", "stoc": 2, "stoc_minim": 10, "descriere": "Mănuși latex", "created_at": datetime.now(timezone.utc).isoformat()},
+    ]
+    await db.products.insert_many(products)
+    
+    return {"message": "Database populată cu succes", "users": 2, "suppliers": 3, "products": len(products)}
+
+# ==================== ROOT ====================
+
 @api_router.get("/")
 async def root():
-    return {"message": "Hello World"}
-
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
-
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
+    return {"message": "ANDREPAU POS API", "version": "1.0.0"}
 
 # Include the router in the main app
 app.include_router(api_router)
@@ -76,13 +801,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

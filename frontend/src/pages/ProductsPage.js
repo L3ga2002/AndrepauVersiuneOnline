@@ -540,13 +540,14 @@ export default function ProductsPage() {
               <div>
                 <Label className="text-muted-foreground">Categorie *</Label>
                 <Select 
-                  value={formData.categorie || undefined} 
-                  onValueChange={(v) => setFormData({...formData, categorie: v})}
+                  value={formData.categorie || "_none_"} 
+                  onValueChange={(v) => setFormData({...formData, categorie: v === "_none_" ? "" : v})}
                 >
                   <SelectTrigger data-testid="input-categorie" className="h-12 mt-1 bg-background border-border text-foreground">
                     <SelectValue placeholder="Selectați categoria" />
                   </SelectTrigger>
                   <SelectContent className="bg-card border-border">
+                    <SelectItem value="_none_">Selectați categoria</SelectItem>
                     {CATEGORIES.map(cat => (
                       <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                     ))}
@@ -557,14 +558,14 @@ export default function ProductsPage() {
               <div>
                 <Label className="text-muted-foreground">Furnizor</Label>
                 <Select 
-                  value={formData.furnizor_id || "none"} 
-                  onValueChange={(v) => setFormData({...formData, furnizor_id: v === "none" ? "" : v})}
+                  value={formData.furnizor_id || "_none_"} 
+                  onValueChange={(v) => setFormData({...formData, furnizor_id: v === "_none_" ? "" : v})}
                 >
                   <SelectTrigger data-testid="input-furnizor" className="h-12 mt-1 bg-background border-border text-foreground">
                     <SelectValue placeholder="Selectați furnizorul" />
                   </SelectTrigger>
                   <SelectContent className="bg-card border-border">
-                    <SelectItem value="none">Fără furnizor</SelectItem>
+                    <SelectItem value="_none_">Fără furnizor</SelectItem>
                     {suppliers.filter(sup => sup && sup.id).map(sup => (
                       <SelectItem key={sup.id} value={sup.id}>{sup.nume}</SelectItem>
                     ))}

@@ -842,12 +842,24 @@ async def search_anaf_cui(data: dict, user: dict = Depends(get_current_user)):
     payload = [{"cui": cui_int, "data": today}]
     
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
                 anaf_url,
                 json=payload,
-                headers={"Content-Type": "application/json"}
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "ANDREPAU-POS/1.0"
+                }
             )
+            
+            logger.info(f"ANAF response status: {response.status_code}")
+            
+            # Check for HTML redirect (ANAF blocks some requests)
+            if "<!DOCTYPE" in response.text or "<html" in response.text.lower():
+                raise HTTPException(
+                    status_code=503, 
+                    detail="Serviciul ANAF nu este disponibil momentan. Completați datele manual sau încercați mai târziu."
+                )
             
             if response.status_code != 200:
                 raise HTTPException(status_code=502, detail="Eroare la conectarea cu ANAF")
@@ -861,24 +873,37 @@ async def search_anaf_cui(data: dict, user: dict = Depends(get_current_user)):
             # Extract company data
             if result.get("found") and len(result["found"]) > 0:
                 company = result["found"][0]
+                date_generale = company.get("date_generale", {})
+                adresa_sediu = company.get("adresa_sediu_social", {})
+                inregistrare_tva = company.get("inregistrare_scop_Tva", {})
                 
-                # Build address from components
+                # Build full address
                 address_parts = []
-                if company.get("adresa_sediu_social"):
-                    address_parts.append(company["adresa_sediu_social"])
-                elif company.get("adresa"):
-                    address_parts.append(company["adresa"])
+                if adresa_sediu.get("sdenumire_Strada"):
+                    street = adresa_sediu.get("sdenumire_Strada", "")
+                    nr = adresa_sediu.get("snumar_Strada", "")
+                    if nr:
+                        address_parts.append(f"{street} {nr}")
+                    else:
+                        address_parts.append(street)
+                if adresa_sediu.get("sdenumire_Localitate"):
+                    address_parts.append(adresa_sediu.get("sdenumire_Localitate"))
+                if adresa_sediu.get("sdenumire_Judet"):
+                    address_parts.append(f"Jud. {adresa_sediu.get('sdenumire_Judet')}")
+                
+                full_address = ", ".join(address_parts) if address_parts else date_generale.get("adresa", "")
                 
                 return {
                     "cui": cui_clean,
-                    "denumire": company.get("denumire", ""),
-                    "adresa": " ".join(address_parts) if address_parts else company.get("adresa_domiciliu_fiscal", ""),
-                    "nr_reg_com": company.get("nrRegCom", ""),
-                    "telefon": company.get("telefon", ""),
-                    "cod_postal": company.get("codPostal", ""),
-                    "platitor_tva": company.get("scpTVA", False),
-                    "stare": company.get("statusInactivi", False) == False,
-                    "raw_data": company
+                    "denumire": date_generale.get("denumire", ""),
+                    "adresa": full_address,
+                    "nr_reg_com": date_generale.get("nrRegCom", ""),
+                    "telefon": date_generale.get("telefon", ""),
+                    "cod_postal": adresa_sediu.get("scod_Postal", "") or date_generale.get("codPostal", ""),
+                    "platitor_tva": inregistrare_tva.get("scpTVA", False),
+                    "stare": date_generale.get("stare_inregistrare", ""),
+                    "localitate": adresa_sediu.get("sdenumire_Localitate", ""),
+                    "judet": adresa_sediu.get("sdenumire_Judet", "")
                 }
             
             raise HTTPException(status_code=404, detail="Nu s-au găsit date pentru acest CUI")
@@ -886,7 +911,11 @@ async def search_anaf_cui(data: dict, user: dict = Depends(get_current_user)):
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="Timeout la conectarea cu ANAF. Încercați din nou.")
     except httpx.RequestError as e:
-        raise HTTPException(status_code=502, detail=f"Eroare de conexiune cu ANAF: {str(e)}")
+        logger.error(f"ANAF request error: {str(e)}")
+        raise HTTPException(
+            status_code=503, 
+            detail="Serviciul ANAF nu este disponibil momentan. Completați datele manual."
+        )
 
 # ==================== SEED DATA ====================
 

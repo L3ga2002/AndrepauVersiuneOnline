@@ -615,6 +615,63 @@ export default function ProductsPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Barcode Not Found Dialog */}
+      <Dialog open={showNotFoundDialog} onOpenChange={setShowNotFoundDialog}>
+        <DialogContent className="bg-card border-border" data-testid="barcode-not-found-dialog">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-xl uppercase text-foreground flex items-center gap-3">
+              <ScanLine className="w-6 h-6 text-yellow-500" />
+              Produs Negăsit
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="py-6">
+            <div className="text-center space-y-4">
+              <div className="w-20 h-20 mx-auto bg-yellow-500/10 rounded-full flex items-center justify-center">
+                <Barcode className="w-10 h-10 text-yellow-500" />
+              </div>
+              
+              <div>
+                <p className="text-muted-foreground">Codul de bare scanat:</p>
+                <p className="font-mono text-2xl font-bold text-primary mt-2">
+                  {scannedBarcode}
+                </p>
+              </div>
+              
+              <p className="text-foreground">
+                Nu există niciun produs cu acest cod de bare în baza de date.
+              </p>
+              
+              {isAdmin && (
+                <p className="text-muted-foreground text-sm">
+                  Doriți să adăugați un produs nou cu acest cod?
+                </p>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowNotFoundDialog(false)}
+              className="h-12 px-6 border-border text-foreground"
+            >
+              Anulează
+            </Button>
+            {isAdmin && (
+              <Button
+                data-testid="add-product-with-barcode"
+                onClick={() => openCreateDialogWithBarcode(scannedBarcode)}
+                className="h-12 px-6 bg-primary text-primary-foreground"
+              >
+                <Plus className="w-5 h-5 mr-2" />
+                Adaugă Produs Nou
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

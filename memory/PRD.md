@@ -19,12 +19,12 @@ Create a store management + POS application for a construction materials and too
 - Cart with quantity selector
 - Manual price edit for bulk products
 - Live total calculation
-- Payment: Numerar, Card, Tichete de masă, Combinată
+- Payment: Numerar, Card, Tichete de masă, Combinată (Numerar+Card+Tichete)
 - Discount percentage
 - Receipt generation
 - Automatic stock decrease
-- Hold/Pending orders (salvare coș)
-- Simplified invoice generation
+- Hold/Pending orders (salvare coș) - Buton "AȘTEAPTĂ" + vizualizare comenzi în așteptare
+- Simplified invoice generation with ANAF CUI search for auto-fill company data
 
 ### 2. Product Management ✅
 - CRUD operations for products
@@ -65,7 +65,10 @@ Create a store management + POS application for a construction materials and too
 - ✅ Fixed critical Select component bug (crashed forms on Products/Stock pages)
 - ✅ Added Excel export functionality (/api/products/export/xls)
 - ✅ Removed "Made with Emergent" badge
-- ✅ All 5,697 imported products are now accessible
+- ✅ Added **Hold Orders** feature - "AȘTEAPTĂ" button to save cart + "Comenzi în Așteptare" dialog
+- ✅ Added **Combined Payment** - Pay with any combination of Cash + Card + Meal Vouchers
+- ✅ Added **Invoice with ANAF Search** - Enter CUI, click "Caută", auto-fills company name, address, reg. number, VAT status
+- ✅ All buttons renamed to Romanian: AȘTEAPTĂ (not HOLD), COMBINAT, FACT, etc.
 
 ### Date: 17.02.2026 (Previous Session)
 - Full backend API with FastAPI + MongoDB

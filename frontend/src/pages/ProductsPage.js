@@ -54,6 +54,10 @@ export default function ProductsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [showLowStock, setShowLowStock] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalProducts, setTotalProducts] = useState(0);
+  const ITEMS_PER_PAGE = 50;
   
   const [showDialog, setShowDialog] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -68,20 +72,22 @@ export default function ProductsPage() {
 
   const fetchProducts = useCallback(async () => {
     try {
-      let url = `${API_URL}/products?`;
-      if (searchQuery) url += `search=${searchQuery}&`;
-      if (filterCategory) url += `categorie=${filterCategory}&`;
+      let url = `${API_URL}/products?page=${currentPage}&limit=${ITEMS_PER_PAGE}&`;
+      if (searchQuery) url += `search=${encodeURIComponent(searchQuery)}&`;
+      if (filterCategory) url += `categorie=${encodeURIComponent(filterCategory)}&`;
       if (showLowStock) url += `low_stock=true&`;
       
       const response = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await response.json();
-      setProducts(data);
+      setProducts(data.products || []);
+      setTotalPages(data.pages || 1);
+      setTotalProducts(data.total || 0);
     } catch (error) {
       console.error('Error fetching products:', error);
     }
-  }, [API_URL, token, searchQuery, filterCategory, showLowStock]);
+  }, [API_URL, token, searchQuery, filterCategory, showLowStock, currentPage]);
 
   const fetchSuppliers = useCallback(async () => {
     try {

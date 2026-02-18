@@ -5,7 +5,7 @@ import { Input } from '../components/ui/input';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { formatCurrency, formatNumber } from '../lib/utils';
-import { Search, Barcode, X, Plus, Minus, Trash2, CreditCard, Banknote, Percent, Receipt, Check, PauseCircle, FileText, Ticket } from 'lucide-react';
+import { Search, Barcode, X, Plus, Minus, Trash2, CreditCard, Banknote, Percent, Receipt, PauseCircle, FileText, Ticket, Clock, Loader2, CheckCircle, Building2, Split } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function POSPage() {
@@ -18,11 +18,11 @@ export default function POSPage() {
   const [discount, setDiscount] = useState(0);
   const [loading, setLoading] = useState(true);
   
-  // Payment modal
-  const [showPayment, setShowPayment] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState('');
+  // Payment modal - Combined payment
+  const [showCombinedPayment, setShowCombinedPayment] = useState(false);
   const [cashAmount, setCashAmount] = useState('');
   const [cardAmount, setCardAmount] = useState('');
+  const [ticketAmount, setTicketAmount] = useState('');
   
   // Receipt modal
   const [showReceipt, setShowReceipt] = useState(false);
@@ -43,7 +43,8 @@ export default function POSPage() {
   
   // Invoice modal
   const [showInvoice, setShowInvoice] = useState(false);
-  const [invoiceData, setInvoiceData] = useState({ firma: '', cui: '', adresa: '' });
+  const [invoiceData, setInvoiceData] = useState({ firma: '', cui: '', adresa: '', nr_reg_com: '', platitor_tva: false });
+  const [searchingCUI, setSearchingCUI] = useState(false);
   
   const searchRef = useRef(null);
 

@@ -1019,12 +1019,21 @@ export default function POSPage() {
               <p className="text-3xl font-bold text-primary">{formatCurrency(total)}</p>
             </div>
           </div>
-          <DialogFooter className="gap-2">
+          <DialogFooter className="gap-2 flex-wrap">
             <Button variant="outline" onClick={() => {
               setShowInvoice(false);
               setInvoiceData({ firma: '', cui: '', adresa: '', nr_reg_com: '', platitor_tva: false });
             }}>
               Anulează
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={saveCompanyToCache}
+              disabled={!invoiceData.firma || !invoiceData.cui}
+              className="border-green-500 text-green-500 hover:bg-green-500/10"
+            >
+              <Database className="w-4 h-4 mr-2" />
+              Salvează Firmă
             </Button>
             <Button 
               onClick={generateInvoice} 

@@ -118,29 +118,46 @@ export default function ProductsPage() {
     fetchProducts();
   }, [searchQuery, filterCategory, showLowStock, fetchProducts]);
 
-  // Barcode scanner handler
+  // Barcode scanner handler - detectează scanarea rapidă
   useEffect(() => {
     let barcodeBuffer = '';
+    let lastKeyTime = 0;
     let barcodeTimeout;
 
     const handleKeyPress = async (e) => {
-      // Only capture if not in an input field (except search)
+      const currentTime = Date.now();
+      const timeDiff = currentTime - lastKeyTime;
+      lastKeyTime = currentTime;
+
+      // Skip if in an input field that's not the search field
       const activeElement = document.activeElement;
-      if (activeElement.tagName === 'INPUT' && activeElement !== searchRef.current) {
+      const isSearchField = activeElement === searchRef.current;
+      const isOtherInput = activeElement.tagName === 'INPUT' && !isSearchField;
+      
+      if (isOtherInput) {
         return;
       }
 
-      // Clear buffer after 100ms of no input (barcode scanners are fast)
+      // Clear buffer after 150ms of no input (barcode scanners are fast)
       clearTimeout(barcodeTimeout);
       barcodeTimeout = setTimeout(() => {
         barcodeBuffer = '';
-      }, 100);
+      }, 150);
 
-      // Build barcode string
+      // If typing is fast (< 50ms between keys) or it's a digit, add to buffer
+      const isFastTyping = timeDiff < 50;
+      const isDigit = /^\d$/.test(e.key);
+      
       if (e.key === 'Enter' && barcodeBuffer.length > 5) {
         e.preventDefault();
         const barcode = barcodeBuffer;
         barcodeBuffer = '';
+        
+        // Clear search field if it contains the barcode
+        if (isSearchField && searchRef.current) {
+          searchRef.current.value = '';
+          setSearchQuery('');
+        }
         
         // Lookup product by barcode
         try {
@@ -165,7 +182,7 @@ export default function ProductsPage() {
           setScannedBarcode(barcode);
           setShowNotFoundDialog(true);
         }
-      } else if (e.key.length === 1) {
+      } else if (e.key.length === 1 && (isFastTyping || isDigit || barcodeBuffer.length > 0)) {
         barcodeBuffer += e.key;
       }
     };

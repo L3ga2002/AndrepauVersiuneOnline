@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { formatDate } from '../lib/utils';
-import { Users, UserPlus, Trash2, Shield, Download, Database, Settings as SettingsIcon } from 'lucide-react';
+import { Users, UserPlus, Trash2, Shield, Download, Database, Settings as SettingsIcon, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function SettingsPage() {
@@ -116,6 +116,28 @@ export default function SettingsPage() {
       }
     } catch (error) {
       toast.error('Eroare la creare backup');
+    }
+  };
+
+  const handleExportXLS = async () => {
+    try {
+      toast.info('Se pregătește exportul Excel...');
+      const response = await fetch(`${API_URL}/products/export/xls`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `produse_andrepau_${new Date().toISOString().split('T')[0]}.xlsx`;
+        link.click();
+        toast.success('Export Excel finalizat');
+      } else {
+        toast.error('Eroare la export Excel');
+      }
+    } catch (error) {
+      toast.error('Eroare la export Excel');
     }
   };
 
@@ -247,7 +269,7 @@ export default function SettingsPage() {
                 <div className="flex items-start gap-4">
                   <Database className="w-10 h-10 text-primary" />
                   <div>
-                    <h4 className="font-medium text-foreground">Export Complet</h4>
+                    <h4 className="font-medium text-foreground">Export Complet (JSON)</h4>
                     <p className="text-sm text-muted-foreground mt-1">
                       Exportă toate produsele, furnizori, vânzări, NIR-uri și utilizatori într-un fișier JSON.
                     </p>
@@ -257,7 +279,27 @@ export default function SettingsPage() {
                       className="mt-4 bg-primary text-primary-foreground"
                     >
                       <Download className="w-5 h-5 mr-2" />
-                      Descarcă Backup
+                      Descarcă Backup JSON
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 bg-secondary/30 rounded-sm">
+                <div className="flex items-start gap-4">
+                  <FileSpreadsheet className="w-10 h-10 text-green-500" />
+                  <div>
+                    <h4 className="font-medium text-foreground">Export Produse (Excel)</h4>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Exportă lista completă de produse într-un fișier Excel (.xlsx) pentru analiză sau arhivare.
+                    </p>
+                    <Button
+                      data-testid="export-xls"
+                      onClick={handleExportXLS}
+                      className="mt-4 bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      <FileSpreadsheet className="w-5 h-5 mr-2" />
+                      Descarcă Excel
                     </Button>
                   </div>
                 </div>

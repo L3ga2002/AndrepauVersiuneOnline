@@ -342,7 +342,7 @@ export default function ProductsPage() {
           </SelectTrigger>
           <SelectContent className="bg-card border-border">
             <SelectItem value="all">Toate categoriile</SelectItem>
-            {[...new Set([...CATEGORIES, ...categories])].map(cat => (
+            {[...new Set([...CATEGORIES, ...categories])].filter(cat => cat && cat.trim() !== '').map(cat => (
               <SelectItem key={cat} value={cat}>{cat}</SelectItem>
             ))}
           </SelectContent>

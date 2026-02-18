@@ -384,13 +384,14 @@ export default function StockPage() {
               <div>
                 <Label className="text-muted-foreground">Furnizor *</Label>
                 <Select 
-                  value={nirForm.furnizor_id || undefined} 
-                  onValueChange={(v) => setNirForm({...nirForm, furnizor_id: v})}
+                  value={nirForm.furnizor_id || "_none_"} 
+                  onValueChange={(v) => setNirForm({...nirForm, furnizor_id: v === "_none_" ? "" : v})}
                 >
                   <SelectTrigger data-testid="nir-furnizor" className="h-12 mt-1 bg-background border-border text-foreground">
                     <SelectValue placeholder="Selectați furnizorul" />
                   </SelectTrigger>
                   <SelectContent className="bg-card border-border">
+                    <SelectItem value="_none_">Selectați furnizorul</SelectItem>
                     {suppliers.filter(sup => sup && sup.id).map(sup => (
                       <SelectItem key={sup.id} value={sup.id}>{sup.nume}</SelectItem>
                     ))}
@@ -416,8 +417,12 @@ export default function StockPage() {
               <div className="grid grid-cols-4 gap-4">
                 <div className="col-span-2">
                   <Select 
-                    value={nirItem.product_id || undefined} 
+                    value={nirItem.product_id || "_none_"} 
                     onValueChange={(v) => {
+                      if (v === "_none_") {
+                        setNirItem({...nirItem, product_id: '', pret_achizitie: ''});
+                        return;
+                      }
                       const product = products.find(p => p.id === v);
                       setNirItem({
                         ...nirItem, 
@@ -430,6 +435,7 @@ export default function StockPage() {
                       <SelectValue placeholder="Selectați produsul" />
                     </SelectTrigger>
                     <SelectContent className="bg-card border-border max-h-60">
+                      <SelectItem value="_none_">Selectați produsul</SelectItem>
                       {products.filter(p => p && p.id).map(p => (
                         <SelectItem key={p.id} value={p.id}>{p.nume}</SelectItem>
                       ))}

@@ -504,7 +504,7 @@ export default function ProductsPage() {
                   </SelectTrigger>
                   <SelectContent className="bg-card border-border">
                     <SelectItem value="none">Fără furnizor</SelectItem>
-                    {suppliers.map(sup => (
+                    {suppliers.filter(sup => sup && sup.id).map(sup => (
                       <SelectItem key={sup.id} value={sup.id}>{sup.nume}</SelectItem>
                     ))}
                   </SelectContent>

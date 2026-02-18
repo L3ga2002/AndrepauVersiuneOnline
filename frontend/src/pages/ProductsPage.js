@@ -308,13 +308,15 @@ export default function ProductsPage() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
           <Input
+            ref={searchRef}
             data-testid="search-products"
             type="text"
-            placeholder="Caută după nume sau cod de bare..."
+            placeholder="Caută după nume sau scanează codul de bare..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-12 pl-10 bg-card border-border text-foreground"
+            className="h-12 pl-10 pr-12 bg-card border-border text-foreground"
           />
+          <Barcode className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
         </div>
         
         <Select value={filterCategory || "all"} onValueChange={(v) => setFilterCategory(v === "all" ? "" : v)}>

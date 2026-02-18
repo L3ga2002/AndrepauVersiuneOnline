@@ -390,7 +390,7 @@ export default function StockPage() {
                     <SelectValue placeholder="Selectați furnizorul" />
                   </SelectTrigger>
                   <SelectContent className="bg-card border-border">
-                    {suppliers.map(sup => (
+                    {suppliers.filter(sup => sup && sup.id).map(sup => (
                       <SelectItem key={sup.id} value={sup.id}>{sup.nume}</SelectItem>
                     ))}
                   </SelectContent>

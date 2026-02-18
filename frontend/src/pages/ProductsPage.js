@@ -543,7 +543,7 @@ export default function ProductsPage() {
               </div>
 
               <div>
-                <Label className="text-muted-foreground">Preț Achiziție (RON) *</Label>
+                <Label className="text-muted-foreground">Preț Achiziție (RON)</Label>
                 <Input
                   data-testid="input-pret-achizitie"
                   type="number"
@@ -551,7 +551,7 @@ export default function ProductsPage() {
                   value={formData.pret_achizitie}
                   onChange={(e) => setFormData({...formData, pret_achizitie: e.target.value})}
                   className="h-12 mt-1 bg-background border-border text-foreground font-mono"
-                  required
+                  placeholder="Opțional"
                 />
               </div>
 

@@ -69,7 +69,8 @@ export default function StockPage() {
       const response = await fetch(`${API_URL}/products`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setProducts(await response.json());
+      const data = await response.json();
+      setProducts(data.products || data);
     } catch (error) {
       console.error('Error fetching products:', error);
     }

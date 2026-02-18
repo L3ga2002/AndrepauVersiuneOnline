@@ -41,11 +41,15 @@ export default function POSPage() {
 
   const fetchProducts = useCallback(async () => {
     try {
-      const response = await fetch(`${API_URL}/products?search=${searchQuery}&categorie=${selectedCategory}`, {
+      let url = `${API_URL}/products?limit=100&`;
+      if (searchQuery) url += `search=${encodeURIComponent(searchQuery)}&`;
+      if (selectedCategory) url += `categorie=${encodeURIComponent(selectedCategory)}&`;
+      
+      const response = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await response.json();
-      setProducts(data);
+      setProducts(data.products || []);
     } catch (error) {
       console.error('Error fetching products:', error);
     }

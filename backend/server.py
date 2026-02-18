@@ -844,7 +844,7 @@ async def search_anaf_cui(data: dict, user: dict = Depends(get_current_user)):
         logger.info(f"Returning cached company data for CUI {cui_clean}")
         return companies_cache[cui_clean]
     
-    # Check database for previously saved company
+    # Check database for previously saved company (local cache)
     existing = await db.companies_cache.find_one({"cui": cui_clean})
     if existing:
         cached_data = {
@@ -862,6 +862,26 @@ async def search_anaf_cui(data: dict, user: dict = Depends(get_current_user)):
         }
         companies_cache[cui_clean] = cached_data
         return cached_data
+    
+    # Check romania_companies collection (from ONRC data.gov.ro)
+    onrc_company = await db.romania_companies.find_one({"cui": cui_clean})
+    if onrc_company:
+        result_data = {
+            "cui": onrc_company.get("cui"),
+            "denumire": onrc_company.get("denumire"),
+            "adresa": onrc_company.get("adresa"),
+            "nr_reg_com": onrc_company.get("nr_reg_com"),
+            "telefon": "",
+            "cod_postal": onrc_company.get("cod_postal", ""),
+            "platitor_tva": False,  # ONRC doesn't have this, would need ANAF
+            "stare": "ACTIV",
+            "localitate": onrc_company.get("localitate", ""),
+            "judet": onrc_company.get("judet", ""),
+            "source": "onrc",
+            "from_cache": True
+        }
+        companies_cache[cui_clean] = result_data
+        return result_data
     
     # Get current date
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")

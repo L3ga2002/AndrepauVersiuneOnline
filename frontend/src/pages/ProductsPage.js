@@ -59,6 +59,12 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState(null);
   const [formData, setFormData] = useState(emptyProduct);
   const [saving, setSaving] = useState(false);
+  
+  // Barcode scanning state
+  const [showNotFoundDialog, setShowNotFoundDialog] = useState(false);
+  const [scannedBarcode, setScannedBarcode] = useState('');
+  const [lastScannedProduct, setLastScannedProduct] = useState(null);
+  const searchRef = useRef(null);
 
   const fetchProducts = useCallback(async () => {
     try {

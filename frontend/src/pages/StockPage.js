@@ -415,7 +415,7 @@ export default function StockPage() {
               <div className="grid grid-cols-4 gap-4">
                 <div className="col-span-2">
                   <Select 
-                    value={nirItem.product_id} 
+                    value={nirItem.product_id || undefined} 
                     onValueChange={(v) => {
                       const product = products.find(p => p.id === v);
                       setNirItem({

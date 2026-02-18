@@ -815,6 +815,79 @@ async def export_products_xls(user: dict = Depends(require_admin)):
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
+# ==================== ANAF API PROXY ====================
+
+@api_router.post("/anaf/search-cui")
+async def search_anaf_cui(data: dict, user: dict = Depends(get_current_user)):
+    """Search company info from ANAF by CUI"""
+    import httpx
+    
+    cui = data.get("cui", "").strip()
+    if not cui:
+        raise HTTPException(status_code=400, detail="CUI este obligatoriu")
+    
+    # Remove 'RO' prefix if present
+    cui_clean = cui.upper().replace("RO", "").strip()
+    
+    try:
+        cui_int = int(cui_clean)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="CUI invalid - trebuie să fie un număr")
+    
+    # Get current date
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    # ANAF API request
+    anaf_url = "https://webservicesp.anaf.ro/PlatitorTvaRest/api/v8/ws/tva"
+    payload = [{"cui": cui_int, "data": today}]
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                anaf_url,
+                json=payload,
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if response.status_code != 200:
+                raise HTTPException(status_code=502, detail="Eroare la conectarea cu ANAF")
+            
+            result = response.json()
+            
+            # Check if company was found
+            if result.get("notFound") and len(result["notFound"]) > 0:
+                raise HTTPException(status_code=404, detail=f"Firma cu CUI {cui_clean} nu a fost găsită în baza ANAF")
+            
+            # Extract company data
+            if result.get("found") and len(result["found"]) > 0:
+                company = result["found"][0]
+                
+                # Build address from components
+                address_parts = []
+                if company.get("adresa_sediu_social"):
+                    address_parts.append(company["adresa_sediu_social"])
+                elif company.get("adresa"):
+                    address_parts.append(company["adresa"])
+                
+                return {
+                    "cui": cui_clean,
+                    "denumire": company.get("denumire", ""),
+                    "adresa": " ".join(address_parts) if address_parts else company.get("adresa_domiciliu_fiscal", ""),
+                    "nr_reg_com": company.get("nrRegCom", ""),
+                    "telefon": company.get("telefon", ""),
+                    "cod_postal": company.get("codPostal", ""),
+                    "platitor_tva": company.get("scpTVA", False),
+                    "stare": company.get("statusInactivi", False) == False,
+                    "raw_data": company
+                }
+            
+            raise HTTPException(status_code=404, detail="Nu s-au găsit date pentru acest CUI")
+            
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Timeout la conectarea cu ANAF. Încercați din nou.")
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"Eroare de conexiune cu ANAF: {str(e)}")
+
 # ==================== SEED DATA ====================
 
 @api_router.post("/seed")

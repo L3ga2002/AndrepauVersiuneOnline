@@ -383,7 +383,7 @@ export default function StockPage() {
               <div>
                 <Label className="text-muted-foreground">Furnizor *</Label>
                 <Select 
-                  value={nirForm.furnizor_id} 
+                  value={nirForm.furnizor_id || undefined} 
                   onValueChange={(v) => setNirForm({...nirForm, furnizor_id: v})}
                 >
                   <SelectTrigger data-testid="nir-furnizor" className="h-12 mt-1 bg-background border-border text-foreground">

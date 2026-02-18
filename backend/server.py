@@ -284,11 +284,13 @@ async def create_product(product: ProductCreate, user: dict = Depends(require_ad
     await db.products.insert_one(product_doc)
     return ProductResponse(**{k: v for k, v in product_doc.items() if k != "_id"})
 
-@api_router.get("/products", response_model=List[ProductResponse])
+@api_router.get("/products")
 async def get_products(
     search: Optional[str] = None,
     categorie: Optional[str] = None,
     low_stock: Optional[bool] = None,
+    page: int = 1,
+    limit: int = 50,
     user: dict = Depends(get_current_user)
 ):
     query = {}
@@ -302,8 +304,20 @@ async def get_products(
     if low_stock:
         query["$expr"] = {"$lte": ["$stoc", "$stoc_minim"]}
     
-    products = await db.products.find(query, {"_id": 0}).to_list(10000)
-    return [ProductResponse(**p) for p in products]
+    # Get total count
+    total = await db.products.count_documents(query)
+    
+    # Get paginated results
+    skip = (page - 1) * limit
+    products = await db.products.find(query, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
+    
+    return {
+        "products": [ProductResponse(**p) for p in products],
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": (total + limit - 1) // limit
+    }
 
 @api_router.get("/products/barcode/{barcode}", response_model=ProductResponse)
 async def get_product_by_barcode(barcode: str, user: dict = Depends(get_current_user)):

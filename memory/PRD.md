@@ -19,16 +19,19 @@ Create a store management + POS application for a construction materials and too
 - Cart with quantity selector
 - Manual price edit for bulk products
 - Live total calculation
-- Payment: Numerar, Card, Combinată
+- Payment: Numerar, Card, Tichete de masă, Combinată
 - Discount percentage
 - Receipt generation
 - Automatic stock decrease
+- Hold/Pending orders (salvare coș)
+- Simplified invoice generation
 
 ### 2. Product Management ✅
 - CRUD operations for products
-- Fields: Nume, Categorie, Furnizor, Cod bare, Preț achiziție, Preț vânzare, TVA, Unitate măsură, Stoc, Stoc minim, Descriere
+- Fields: Nume, Categorie, Furnizor, Cod bare, Preț achiziție (opțional), Preț vânzare, TVA, Unitate măsură, Stoc, Stoc minim, Descriere
 - Units: buc, sac, kg, metru, litru, rolă
 - Fractional quantities support
+- Scan-to-Add: scanning unknown barcode prompts to add new product
 
 ### 3. Stock / Inventar ✅
 - Dashboard: total produse, valoare stoc, stoc scăzut, fără stoc
@@ -53,53 +56,72 @@ Create a store management + POS application for a construction materials and too
 
 ### 7. Settings ✅
 - User management (admin only)
-- Database backup/export
+- Database backup/export JSON
+- Export produse Excel (.xlsx)
 
 ## What's Been Implemented
-- **Date**: 17.02.2026
+
+### Date: 18.02.2026 (Current Session)
+- ✅ Fixed critical Select component bug (crashed forms on Products/Stock pages)
+- ✅ Added Excel export functionality (/api/products/export/xls)
+- ✅ Removed "Made with Emergent" badge
+- ✅ All 5,697 imported products are now accessible
+
+### Date: 17.02.2026 (Previous Session)
 - Full backend API with FastAPI + MongoDB
 - React frontend with Shadcn/UI components
 - JWT authentication
 - Industrial Dark Mode theme (orange accents)
 - Touchscreen-optimized (48px+ buttons)
 - Romanian language throughout
-- 55 demo products seeded
-- 3 demo suppliers
-- 2 demo users (admin, casier)
+- PWA (Progressive Web App) conversion
+- 5,697 products imported from Excel file
+- Pagination for large product catalogs
+- Database indexing for performance
 
 ## Tech Stack
-- Backend: FastAPI, MongoDB, Motor, PyJWT, bcrypt
+- Backend: FastAPI, MongoDB, Motor, PyJWT, bcrypt, openpyxl
 - Frontend: React 19, Tailwind CSS, Shadcn/UI, Recharts
 - Fonts: Barlow Condensed (headings), Inter (body), JetBrains Mono (prices)
+- PWA: Service Worker, Manifest
 
 ## Prioritized Backlog
 
-### P0 (Critical) - DONE
+### P0 (Critical) - DONE ✅
 - [x] POS selling flow
 - [x] Product management
 - [x] Authentication
+- [x] Select component bug fix
 
-### P1 (High) - DONE
+### P1 (High) - DONE ✅
 - [x] Stock dashboard
 - [x] NIR module
 - [x] Reports
 - [x] Supplier management
+- [x] Excel export
+- [x] PWA conversion
+- [x] Mass data import
 
 ### P2 (Medium) - Future
+- [ ] INCOTEX Succes M7 cash register integration
+- [ ] Bank POS terminal integration
 - [ ] Thermal printer integration (real ESC/POS commands)
 - [ ] Cash drawer trigger
 - [ ] Barcode label printing
-- [ ] Multiple price lists
-- [ ] Customer loyalty program
 
 ### P3 (Low) - Future
+- [ ] Multiple price lists
+- [ ] Customer loyalty program
 - [ ] Multi-location support
-- [ ] Import/Export Excel
 - [ ] Offline mode with sync
 - [ ] Mobile app version
 
 ## Next Tasks
-1. Integrate real thermal printer (ESC/POS protocol)
-2. Add cash drawer control
-3. Implement barcode label printing
-4. Add customer management module
+1. Integrate INCOTEX Succes M7 cash register for fiscal receipts
+2. Integrate bank card payment terminal
+3. Add thermal printer support (ESC/POS protocol)
+4. Implement cash drawer control
+
+## Credentials
+- **Admin**: admin / admin123
+- **Casier**: casier / casier123

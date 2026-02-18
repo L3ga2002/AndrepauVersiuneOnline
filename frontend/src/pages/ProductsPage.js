@@ -120,9 +120,14 @@ export default function ProductsPage() {
     init();
   }, [fetchProducts, fetchSuppliers, fetchCategories]);
 
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterCategory, showLowStock]);
+
   useEffect(() => {
     fetchProducts();
-  }, [searchQuery, filterCategory, showLowStock, fetchProducts]);
+  }, [currentPage, fetchProducts]);
 
   // Barcode scanner handler - detectează scanarea rapidă
   useEffect(() => {

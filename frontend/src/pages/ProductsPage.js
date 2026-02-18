@@ -118,6 +118,74 @@ export default function ProductsPage() {
     fetchProducts();
   }, [searchQuery, filterCategory, showLowStock, fetchProducts]);
 
+  // Barcode scanner handler
+  useEffect(() => {
+    let barcodeBuffer = '';
+    let barcodeTimeout;
+
+    const handleKeyPress = async (e) => {
+      // Only capture if not in an input field (except search)
+      const activeElement = document.activeElement;
+      if (activeElement.tagName === 'INPUT' && activeElement !== searchRef.current) {
+        return;
+      }
+
+      // Clear buffer after 100ms of no input (barcode scanners are fast)
+      clearTimeout(barcodeTimeout);
+      barcodeTimeout = setTimeout(() => {
+        barcodeBuffer = '';
+      }, 100);
+
+      // Build barcode string
+      if (e.key === 'Enter' && barcodeBuffer.length > 5) {
+        e.preventDefault();
+        const barcode = barcodeBuffer;
+        barcodeBuffer = '';
+        
+        // Lookup product by barcode
+        try {
+          const response = await fetch(`${API_URL}/products/barcode/${barcode}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          
+          if (response.ok) {
+            const product = await response.json();
+            setLastScannedProduct(product);
+            setSearchQuery(barcode);
+            toast.success(`Produs găsit: ${product.nume}`, {
+              description: `Stoc: ${product.stoc} ${product.unitate} | Preț: ${product.pret_vanzare} RON`
+            });
+          } else {
+            // Product not found - ask to add
+            setScannedBarcode(barcode);
+            setShowNotFoundDialog(true);
+          }
+        } catch (error) {
+          console.error('Barcode lookup error:', error);
+          setScannedBarcode(barcode);
+          setShowNotFoundDialog(true);
+        }
+      } else if (e.key.length === 1) {
+        barcodeBuffer += e.key;
+      }
+    };
+
+    window.addEventListener('keypress', handleKeyPress);
+    return () => window.removeEventListener('keypress', handleKeyPress);
+  }, [API_URL, token]);
+
+  // Function to open create dialog with scanned barcode
+  const openCreateDialogWithBarcode = (barcode) => {
+    setEditingProduct(null);
+    setFormData({
+      ...emptyProduct,
+      cod_bare: barcode
+    });
+    setShowNotFoundDialog(false);
+    setShowDialog(true);
+    toast.info('Completați datele produsului nou');
+  };
+
   const openCreateDialog = () => {
     setEditingProduct(null);
     setFormData(emptyProduct);

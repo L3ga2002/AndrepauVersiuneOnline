@@ -706,6 +706,33 @@ async def create_backup(user: dict = Depends(require_admin)):
     }
     return backup_data
 
+@api_router.get("/backup/products-csv")
+async def export_products_csv(user: dict = Depends(require_admin)):
+    """Export all products as CSV for Excel"""
+    products = await db.products.find({}, {"_id": 0}).to_list(100000)
+    
+    # Build CSV
+    headers = ["Denumire", "Categorie", "Cod Bare", "Pret Achizitie", "Pret Vanzare", "TVA %", "Unitate", "Stoc", "Stoc Minim"]
+    rows = []
+    for p in products:
+        rows.append([
+            p.get("nume", ""),
+            p.get("categorie", ""),
+            p.get("cod_bare", "") or "",
+            str(p.get("pret_achizitie", 0)),
+            str(p.get("pret_vanzare", 0)),
+            str(p.get("tva", 21)),
+            p.get("unitate", "buc"),
+            str(p.get("stoc", 0)),
+            str(p.get("stoc_minim", 5))
+        ])
+    
+    return {
+        "headers": headers,
+        "rows": rows,
+        "total": len(rows)
+    }
+
 # ==================== SEED DATA ====================
 
 @api_router.post("/seed")

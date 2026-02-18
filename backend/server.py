@@ -67,7 +67,7 @@ class ProductCreate(BaseModel):
     categorie: str
     furnizor_id: Optional[str] = None
     cod_bare: Optional[str] = None
-    pret_achizitie: float
+    pret_achizitie: float = 0
     pret_vanzare: float
     tva: float = 19.0
     unitate: str = "buc"  # buc, sac, kg, metru, litru, rola

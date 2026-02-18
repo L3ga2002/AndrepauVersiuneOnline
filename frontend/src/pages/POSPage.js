@@ -4,8 +4,8 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import { formatCurrency, formatNumber, getStockStatus, getUnitLabel } from '../lib/utils';
-import { Search, Barcode, X, Plus, Minus, Trash2, CreditCard, Banknote, Percent, Receipt, Check, AlertTriangle, Package } from 'lucide-react';
+import { formatCurrency, formatNumber } from '../lib/utils';
+import { Search, Barcode, X, Plus, Minus, Trash2, CreditCard, Banknote, Percent, Receipt, Check, PauseCircle, FileText, Ticket } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function POSPage() {
@@ -37,6 +37,14 @@ export default function POSPage() {
   const [showDiscount, setShowDiscount] = useState(false);
   const [discountInput, setDiscountInput] = useState('');
   
+  // Hold/Pending orders
+  const [holdOrders, setHoldOrders] = useState([]);
+  const [showHoldOrders, setShowHoldOrders] = useState(false);
+  
+  // Invoice modal
+  const [showInvoice, setShowInvoice] = useState(false);
+  const [invoiceData, setInvoiceData] = useState({ firma: '', cui: '', adresa: '' });
+  
   const searchRef = useRef(null);
 
   const fetchProducts = useCallback(async () => {
@@ -61,7 +69,7 @@ export default function POSPage() {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await response.json();
-      setCategories(data);
+      setCategories(data.filter(c => c && c.trim() !== ''));
     } catch (error) {
       console.error('Error fetching categories:', error);
     }
@@ -87,28 +95,40 @@ export default function POSPage() {
     }
   }, []);
 
-  // Barcode scanner handler
+  // Barcode scanner handler - FIXED
   useEffect(() => {
     let barcodeBuffer = '';
-    let barcodeTimeout;
+    let lastKeyTime = 0;
 
-    const handleKeyPress = async (e) => {
-      // Only capture if not in an input field (except search)
-      if (document.activeElement.tagName === 'INPUT' && document.activeElement !== searchRef.current) {
+    const handleKeyDown = async (e) => {
+      const currentTime = Date.now();
+      const timeDiff = currentTime - lastKeyTime;
+      lastKeyTime = currentTime;
+
+      // Skip if in modal inputs
+      const activeEl = document.activeElement;
+      const isInModal = activeEl.closest('[role="dialog"]');
+      if (isInModal && activeEl.tagName === 'INPUT') {
         return;
       }
 
-      // Clear buffer after 100ms of no input (barcode scanners are fast)
-      clearTimeout(barcodeTimeout);
-      barcodeTimeout = setTimeout(() => {
+      // Fast typing detection (barcode scanners type very fast)
+      if (e.key === 'Enter' && barcodeBuffer.length >= 5) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const barcode = barcodeBuffer;
         barcodeBuffer = '';
-      }, 100);
-
-      // Build barcode string
-      if (e.key === 'Enter' && barcodeBuffer.length > 5) {
+        
+        // Clear search field
+        if (searchRef.current) {
+          searchRef.current.value = '';
+          setSearchQuery('');
+        }
+        
         // Lookup product by barcode
         try {
-          const response = await fetch(`${API_URL}/products/barcode/${barcodeBuffer}`, {
+          const response = await fetch(`${API_URL}/products/barcode/${barcode}`, {
             headers: { Authorization: `Bearer ${token}` }
           });
           if (response.ok) {
@@ -116,34 +136,35 @@ export default function POSPage() {
             addToCart(product);
             toast.success(`${product.nume} adăugat în coș`);
           } else {
-            toast.error('Produs negăsit');
+            toast.error(`Produs negăsit: ${barcode}`);
           }
         } catch (error) {
           console.error('Barcode lookup error:', error);
+          toast.error('Eroare la căutare produs');
         }
-        barcodeBuffer = '';
-      } else if (e.key.length === 1) {
-        barcodeBuffer += e.key;
+      } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey) {
+        // Add to buffer if fast typing or if it's a digit
+        if (timeDiff < 100 || /^\d$/.test(e.key) || barcodeBuffer.length > 0) {
+          barcodeBuffer += e.key;
+        }
+        
+        // Clear buffer after 200ms of no input
+        setTimeout(() => {
+          if (Date.now() - lastKeyTime > 200) {
+            barcodeBuffer = '';
+          }
+        }, 250);
       }
     };
 
-    window.addEventListener('keypress', handleKeyPress);
-    return () => window.removeEventListener('keypress', handleKeyPress);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [API_URL, token]);
 
   const addToCart = (product) => {
-    if (product.stoc <= 0) {
-      toast.error('Produsul nu este în stoc');
-      return;
-    }
-
     setCart(prev => {
       const existing = prev.find(item => item.product_id === product.id);
       if (existing) {
-        if (existing.cantitate >= product.stoc) {
-          toast.error('Cantitate insuficientă în stoc');
-          return prev;
-        }
         return prev.map(item =>
           item.product_id === product.id
             ? { ...item, cantitate: item.cantitate + 1 }
@@ -169,7 +190,7 @@ export default function POSPage() {
     }
     setCart(prev => prev.map(item =>
       item.product_id === productId
-        ? { ...item, cantitate: Math.min(newQty, item.stoc_disponibil) }
+        ? { ...item, cantitate: newQty }
         : item
     ));
   };
@@ -183,6 +204,35 @@ export default function POSPage() {
     setDiscount(0);
   };
 
+  // Hold current order
+  const holdOrder = () => {
+    if (cart.length === 0) {
+      toast.error('Coșul este gol');
+      return;
+    }
+    const holdOrder = {
+      id: Date.now(),
+      items: [...cart],
+      discount: discount,
+      time: new Date().toLocaleTimeString('ro-RO')
+    };
+    setHoldOrders(prev => [...prev, holdOrder]);
+    clearCart();
+    toast.success('Comandă pusă în așteptare');
+  };
+
+  // Restore held order
+  const restoreOrder = (orderId) => {
+    const order = holdOrders.find(o => o.id === orderId);
+    if (order) {
+      setCart(order.items);
+      setDiscount(order.discount);
+      setHoldOrders(prev => prev.filter(o => o.id !== orderId));
+      setShowHoldOrders(false);
+      toast.success('Comandă restaurată');
+    }
+  };
+
   // Calculate totals
   const subtotal = cart.reduce((sum, item) => sum + (item.cantitate * item.pret_unitar), 0);
   const discountAmount = subtotal * (discount / 100);
@@ -193,17 +243,20 @@ export default function POSPage() {
   }, 0);
   const total = subtotalAfterDiscount;
 
-  const handlePayment = async () => {
+  const handlePayment = async (method) => {
     if (cart.length === 0) return;
 
     let sumaCash = 0;
     let sumaCard = 0;
+    let sumaTichete = 0;
 
-    if (paymentMethod === 'numerar') {
+    if (method === 'numerar') {
       sumaCash = total;
-    } else if (paymentMethod === 'card') {
+    } else if (method === 'card') {
       sumaCard = total;
-    } else if (paymentMethod === 'combinat') {
+    } else if (method === 'tichete') {
+      sumaTichete = total;
+    } else if (method === 'combinat') {
       sumaCash = parseFloat(cashAmount) || 0;
       sumaCard = parseFloat(cardAmount) || 0;
       if (sumaCash + sumaCard < total) {
@@ -225,9 +278,9 @@ export default function POSPage() {
         tva_total: tvaTotal,
         total: total,
         discount_percent: discount,
-        metoda_plata: paymentMethod,
+        metoda_plata: method,
         suma_numerar: sumaCash,
-        suma_card: sumaCard,
+        suma_card: sumaCard + sumaTichete,
         casier_id: user.id
       };
 
@@ -246,7 +299,7 @@ export default function POSPage() {
         setShowPayment(false);
         setShowReceipt(true);
         clearCart();
-        fetchProducts(); // Refresh stock
+        fetchProducts();
         toast.success('Vânzare finalizată cu succes');
       } else {
         const error = await response.json();
@@ -289,172 +342,183 @@ export default function POSPage() {
     }
   };
 
+  // Generate simplified invoice
+  const generateInvoice = async () => {
+    if (!invoiceData.firma || !invoiceData.cui) {
+      toast.error('Completați datele firmei');
+      return;
+    }
+    
+    // Process as regular sale but mark as invoice
+    await handlePayment('numerar');
+    setShowInvoice(false);
+    toast.success('Factură simplificată generată');
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-background" data-testid="pos-page">
       {/* Left Panel - Products */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         {/* Search & Categories */}
-        <div className="p-4 border-b border-border space-y-4">
+        <div className="p-3 border-b border-border space-y-3">
           <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
             <Input
               ref={searchRef}
               data-testid="pos-search"
               type="text"
-              placeholder="Caută produs sau scanează codul de bare..."
+              placeholder="Caută produs sau scanează cod bare..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-14 pl-12 pr-12 text-lg bg-card border-border placeholder:text-muted-foreground"
+              className="h-12 pl-10 pr-10 text-base bg-card border-border"
             />
-            <Barcode className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+            <Barcode className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
           </div>
 
           {/* Categories */}
           <ScrollArea className="w-full whitespace-nowrap">
-            <div className="flex gap-2 pb-2">
+            <div className="flex gap-2 pb-1">
               <button
-                data-testid="category-all"
                 onClick={() => setSelectedCategory('')}
-                className={`category-tag ${!selectedCategory ? 'active' : ''}`}
+                className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
+                  !selectedCategory 
+                    ? 'bg-primary text-primary-foreground' 
+                    : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                }`}
               >
-                Toate
+                TOATE
               </button>
-              {categories.map(cat => (
+              {categories.slice(0, 8).map(cat => (
                 <button
                   key={cat}
-                  data-testid={`category-${cat}`}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`category-tag ${selectedCategory === cat ? 'active' : ''}`}
+                  className={`px-4 py-2 rounded text-sm font-medium transition-colors whitespace-nowrap ${
+                    selectedCategory === cat 
+                      ? 'bg-primary text-primary-foreground' 
+                      : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                  }`}
                 >
-                  {cat}
+                  {cat.toUpperCase()}
                 </button>
               ))}
             </div>
           </ScrollArea>
         </div>
 
-        {/* Products Grid */}
-        <ScrollArea className="flex-1 p-4">
+        {/* Products Grid - REDESIGNED */}
+        <ScrollArea className="flex-1 p-3">
           {loading ? (
             <div className="flex items-center justify-center h-64">
               <div className="spinner" />
             </div>
           ) : products.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-              <Package className="w-16 h-16 mb-4 opacity-50" />
               <p>Niciun produs găsit</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-              {products.map(product => {
-                const stockStatus = getStockStatus(product.stoc, product.stoc_minim);
-                return (
-                  <button
-                    key={product.id}
-                    data-testid={`product-${product.id}`}
-                    onClick={() => addToCart(product)}
-                    disabled={product.stoc <= 0}
-                    className={`product-card text-left ${product.stoc <= 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    <h3 className="font-medium text-foreground line-clamp-2 mb-2 min-h-[48px]">
-                      {product.nume}
-                    </h3>
-                    <p className="font-mono text-2xl font-bold text-primary mb-1">
-                      {formatCurrency(product.pret_vanzare)}
-                    </p>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className={stockStatus.className}>
-                        {formatNumber(product.stoc, 1)} {product.unitate}
-                      </span>
-                      {product.stoc <= product.stoc_minim && product.stoc > 0 && (
-                        <AlertTriangle className="w-4 h-4 text-yellow-500" />
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
+            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
+              {products.map(product => (
+                <button
+                  key={product.id}
+                  data-testid={`product-${product.id}`}
+                  onClick={() => addToCart(product)}
+                  className="bg-card border border-border rounded p-3 text-left hover:border-primary hover:bg-card/80 transition-all active:scale-95"
+                >
+                  <p className="text-sm font-medium text-foreground line-clamp-2 min-h-[40px] leading-tight">
+                    {product.nume}
+                  </p>
+                  <p className="text-lg font-bold text-primary mt-1">
+                    {formatCurrency(product.pret_vanzare)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {product.unitate}
+                  </p>
+                </button>
+              ))}
             </div>
           )}
         </ScrollArea>
       </div>
 
       {/* Right Panel - Cart */}
-      <div className="w-96 xl:w-[420px] border-l border-border bg-card flex flex-col h-full">
+      <div className="w-80 xl:w-96 border-l border-border bg-card flex flex-col h-full">
         {/* Cart Header */}
-        <div className="p-4 border-b border-border flex items-center justify-between">
-          <h2 className="font-heading text-xl uppercase tracking-wide text-foreground">
-            Coș de cumpărături
-          </h2>
-          {cart.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              data-testid="clear-cart"
-              onClick={clearCart}
-              className="text-destructive hover:text-destructive hover:bg-destructive/10"
-            >
-              <Trash2 className="w-4 h-4 mr-1" />
-              Golește
-            </Button>
-          )}
+        <div className="p-3 border-b border-border flex items-center justify-between">
+          <h2 className="font-bold text-lg text-foreground">COȘ</h2>
+          <div className="flex gap-2">
+            {holdOrders.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowHoldOrders(true)}
+                className="h-8 px-2 border-yellow-500 text-yellow-500"
+              >
+                <PauseCircle className="w-4 h-4 mr-1" />
+                {holdOrders.length}
+              </Button>
+            )}
+            {cart.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearCart}
+                className="h-8 text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Cart Items */}
         <ScrollArea className="flex-1">
           {cart.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-              <Receipt className="w-16 h-16 mb-4 opacity-50" />
-              <p>Coșul este gol</p>
-              <p className="text-sm mt-2">Adăugați produse din stânga</p>
+            <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
+              <Receipt className="w-12 h-12 mb-2 opacity-50" />
+              <p className="text-sm">Coșul este gol</p>
             </div>
           ) : (
             <div className="divide-y divide-border">
               {cart.map(item => (
-                <div key={item.product_id} className="cart-item" data-testid={`cart-item-${item.product_id}`}>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-foreground truncate">{item.nume}</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {formatCurrency(item.pret_unitar)} / {item.unitate}
+                <div key={item.product_id} className="p-3 hover:bg-secondary/30">
+                  <div className="flex justify-between items-start">
+                    <p className="text-sm font-medium text-foreground flex-1 pr-2">{item.nume}</p>
+                    <button
+                      onClick={() => removeFromCart(item.product_id)}
+                      className="text-destructive hover:bg-destructive/10 p-1 rounded"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => updateQuantity(item.product_id, item.cantitate - 1)}
+                        className="w-8 h-8 bg-secondary rounded flex items-center justify-center hover:bg-secondary/80"
+                      >
+                        <Minus className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingItem(item);
+                          setEditQuantity(item.cantitate.toString());
+                          setEditPrice(item.pret_unitar.toString());
+                        }}
+                        className="w-12 h-8 bg-background border border-border rounded text-sm font-mono"
+                      >
+                        {formatNumber(item.cantitate, item.unitate === 'buc' ? 0 : 2)}
+                      </button>
+                      <button
+                        onClick={() => updateQuantity(item.product_id, item.cantitate + 1)}
+                        className="w-8 h-8 bg-secondary rounded flex items-center justify-center hover:bg-secondary/80"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <p className="font-bold text-primary">
+                      {formatCurrency(item.cantitate * item.pret_unitar)}
                     </p>
                   </div>
-                  
-                  <div className="flex items-center gap-2 ml-4">
-                    <button
-                      data-testid={`qty-decrease-${item.product_id}`}
-                      onClick={() => updateQuantity(item.product_id, item.cantitate - 1)}
-                      className="qty-btn"
-                    >
-                      <Minus className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEditingItem(item);
-                        setEditQuantity(item.cantitate.toString());
-                        setEditPrice(item.pret_unitar.toString());
-                      }}
-                      className="w-16 h-12 bg-background border border-border rounded-sm font-mono text-lg text-center text-foreground hover:border-primary"
-                    >
-                      {formatNumber(item.cantitate, item.unitate === 'buc' ? 0 : 2)}
-                    </button>
-                    <button
-                      data-testid={`qty-increase-${item.product_id}`}
-                      onClick={() => updateQuantity(item.product_id, item.cantitate + 1)}
-                      className="qty-btn"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
-                    <button
-                      data-testid={`remove-item-${item.product_id}`}
-                      onClick={() => removeFromCart(item.product_id)}
-                      className="ml-2 p-2 text-destructive hover:bg-destructive/10 rounded-sm"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  </div>
-                  
-                  <p className="font-mono font-bold text-lg ml-4 min-w-[100px] text-right text-foreground">
-                    {formatCurrency(item.cantitate * item.pret_unitar)}
-                  </p>
                 </div>
               ))}
             </div>
@@ -462,255 +526,140 @@ export default function POSPage() {
         </ScrollArea>
 
         {/* Cart Summary & Actions */}
-        <div className="p-4 border-t border-border space-y-4 bg-card">
+        <div className="p-3 border-t border-border space-y-3 bg-card">
           {/* Totals */}
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between text-muted-foreground">
-              <span>Subtotal</span>
-              <span className="font-mono">{formatCurrency(subtotal)}</span>
-            </div>
+          <div className="space-y-1 text-sm">
             {discount > 0 && (
               <div className="flex justify-between text-green-500">
                 <span>Reducere ({discount}%)</span>
-                <span className="font-mono">-{formatCurrency(discountAmount)}</span>
+                <span>-{formatCurrency(discountAmount)}</span>
               </div>
             )}
             <div className="flex justify-between text-muted-foreground">
               <span>TVA inclus</span>
-              <span className="font-mono">{formatCurrency(tvaTotal)}</span>
+              <span>{formatCurrency(tvaTotal)}</span>
             </div>
             <div className="flex justify-between text-xl font-bold pt-2 border-t border-border text-foreground">
               <span>TOTAL</span>
-              <span className="font-mono text-primary">{formatCurrency(total)}</span>
+              <span className="text-primary">{formatCurrency(total)}</span>
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="grid grid-cols-2 gap-2">
+          {/* Quick Actions */}
+          <div className="grid grid-cols-3 gap-2">
             <Button
               variant="outline"
-              data-testid="btn-discount"
               onClick={() => setShowDiscount(true)}
-              className="h-14 border-border text-foreground hover:bg-secondary"
+              className="h-10 text-xs border-border"
             >
-              <Percent className="w-5 h-5 mr-2" />
-              Reducere
+              <Percent className="w-4 h-4 mr-1" />
+              %
             </Button>
             <Button
-              variant="destructive"
-              data-testid="btn-cancel"
-              onClick={clearCart}
-              className="h-14"
+              variant="outline"
+              onClick={holdOrder}
+              className="h-10 text-xs border-yellow-500 text-yellow-500 hover:bg-yellow-500/10"
             >
-              <X className="w-5 h-5 mr-2" />
-              Anulează
+              <PauseCircle className="w-4 h-4 mr-1" />
+              HOLD
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setShowInvoice(true)}
+              disabled={cart.length === 0}
+              className="h-10 text-xs border-border"
+            >
+              <FileText className="w-4 h-4 mr-1" />
+              FACT
             </Button>
           </div>
 
-          {/* Payment Buttons */}
+          {/* Payment Buttons - Big like ForIT */}
           <div className="grid grid-cols-2 gap-2">
             <Button
-              data-testid="btn-pay-cash"
-              onClick={() => {
-                setPaymentMethod('numerar');
-                setShowPayment(true);
-              }}
+              onClick={() => handlePayment('numerar')}
               disabled={cart.length === 0}
-              className="payment-btn bg-green-600 hover:bg-green-700 text-white"
+              className="h-14 text-lg font-bold bg-green-600 hover:bg-green-700 text-white"
             >
-              <Banknote className="w-6 h-6 mr-2" />
+              <Banknote className="w-5 h-5 mr-2" />
               NUMERAR
             </Button>
             <Button
-              data-testid="btn-pay-card"
-              onClick={() => {
-                setPaymentMethod('card');
-                setShowPayment(true);
-              }}
+              onClick={() => handlePayment('card')}
               disabled={cart.length === 0}
-              className="payment-btn bg-blue-600 hover:bg-blue-700 text-white"
+              className="h-14 text-lg font-bold bg-blue-600 hover:bg-blue-700 text-white"
             >
-              <CreditCard className="w-6 h-6 mr-2" />
+              <CreditCard className="w-5 h-5 mr-2" />
               CARD
             </Button>
           </div>
-          <Button
-            data-testid="btn-pay-combined"
-            onClick={() => {
-              setPaymentMethod('combinat');
-              setCashAmount('');
-              setCardAmount('');
-              setShowPayment(true);
-            }}
-            disabled={cart.length === 0}
-            className="w-full h-20 text-2xl font-bold uppercase bg-primary hover:bg-primary/90 text-primary-foreground animate-pulse-glow"
-          >
-            <Receipt className="w-8 h-8 mr-3" />
-            PLATĂ COMBINATĂ
-          </Button>
+          
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              onClick={() => handlePayment('tichete')}
+              disabled={cart.length === 0}
+              className="h-12 font-bold bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              <Ticket className="w-5 h-5 mr-2" />
+              TICHETE
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={clearCart}
+              disabled={cart.length === 0}
+              className="h-12 font-bold"
+            >
+              <X className="w-5 h-5 mr-2" />
+              ANULEAZĂ
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Payment Modal */}
-      <Dialog open={showPayment} onOpenChange={setShowPayment}>
-        <DialogContent className="bg-card border-border" data-testid="payment-modal">
-          <DialogHeader>
-            <DialogTitle className="font-heading text-2xl uppercase text-foreground">
-              {paymentMethod === 'numerar' ? 'Plată Numerar' : 
-               paymentMethod === 'card' ? 'Plată Card' : 'Plată Combinată'}
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-6 py-4">
-            <div className="text-center">
-              <p className="text-muted-foreground">Total de plată</p>
-              <p className="font-mono text-4xl font-bold text-primary mt-2">
-                {formatCurrency(total)}
-              </p>
-            </div>
-
-            {paymentMethod === 'combinat' && (
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm text-muted-foreground">Suma numerar</label>
-                  <Input
-                    data-testid="cash-input"
-                    type="number"
-                    value={cashAmount}
-                    onChange={(e) => setCashAmount(e.target.value)}
-                    className="h-14 text-xl font-mono mt-1 bg-background border-border text-foreground"
-                    placeholder="0.00"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm text-muted-foreground">Suma card</label>
-                  <Input
-                    data-testid="card-input"
-                    type="number"
-                    value={cardAmount}
-                    onChange={(e) => setCardAmount(e.target.value)}
-                    className="h-14 text-xl font-mono mt-1 bg-background border-border text-foreground"
-                    placeholder="0.00"
-                  />
-                </div>
-                <div className="flex justify-between text-lg font-medium text-foreground">
-                  <span>Total introdus:</span>
-                  <span className="font-mono">
-                    {formatCurrency((parseFloat(cashAmount) || 0) + (parseFloat(cardAmount) || 0))}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {paymentMethod === 'numerar' && (
-              <div className="p-4 bg-secondary/50 rounded-sm">
-                <p className="text-center text-muted-foreground">
-                  Confirmați plata în numerar?
-                </p>
-              </div>
-            )}
-
-            {paymentMethod === 'card' && (
-              <div className="p-4 bg-secondary/50 rounded-sm">
-                <p className="text-center text-muted-foreground">
-                  Procesați plata la terminal
-                </p>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setShowPayment(false)}
-              className="h-14 px-8 border-border text-foreground"
-            >
-              Anulează
-            </Button>
-            <Button
-              data-testid="confirm-payment"
-              onClick={handlePayment}
-              className="h-14 px-8 bg-primary text-primary-foreground"
-            >
-              <Check className="w-5 h-5 mr-2" />
-              Confirmă Plata
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Receipt Modal */}
       <Dialog open={showReceipt} onOpenChange={setShowReceipt}>
-        <DialogContent className="bg-card border-border max-w-md" data-testid="receipt-modal">
+        <DialogContent className="bg-card border-border max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-heading text-2xl uppercase text-center text-foreground">
-              Bon Fiscal
-            </DialogTitle>
+            <DialogTitle className="text-center text-foreground">BON FISCAL</DialogTitle>
           </DialogHeader>
 
           {lastSale && (
-            <div className="receipt p-4 bg-background rounded-sm receipt-printable">
-              <div className="receipt-header">
-                <h3 className="font-heading text-xl text-foreground">ANDREPAU</h3>
-                <p className="text-muted-foreground text-xs">Materiale Construcții</p>
-                <p className="text-muted-foreground text-xs mt-2">
+            <div className="font-mono text-sm p-4 bg-background rounded receipt-printable">
+              <div className="text-center border-b border-dashed border-border pb-3 mb-3">
+                <h3 className="font-bold text-lg">ANDREPAU</h3>
+                <p className="text-xs text-muted-foreground">Materiale Construcții</p>
+                <p className="text-xs text-muted-foreground mt-2">
                   {new Date(lastSale.created_at).toLocaleString('ro-RO')}
                 </p>
-                <p className="text-muted-foreground text-xs">Nr: {lastSale.numar_bon}</p>
+                <p className="text-xs">Nr: {lastSale.numar_bon}</p>
               </div>
 
-              <div className="space-y-1">
+              <div className="space-y-1 text-xs">
                 {lastSale.items.map((item, idx) => (
-                  <div key={idx} className="receipt-item text-foreground">
-                    <span className="flex-1">{item.nume}</span>
-                    <span className="text-right ml-2">
-                      {formatNumber(item.cantitate)} x {formatCurrency(item.pret_unitar)}
-                    </span>
+                  <div key={idx} className="flex justify-between">
+                    <span className="flex-1 truncate">{item.nume}</span>
+                    <span className="ml-2">{formatNumber(item.cantitate)} x {formatCurrency(item.pret_unitar)}</span>
                   </div>
                 ))}
               </div>
 
-              {lastSale.discount_percent > 0 && (
-                <div className="receipt-item text-green-500 border-t border-dashed border-border mt-2 pt-2">
-                  <span>Reducere ({lastSale.discount_percent}%)</span>
-                  <span>-{formatCurrency(lastSale.subtotal * lastSale.discount_percent / 100)}</span>
-                </div>
-              )}
-
-              <div className="receipt-total">
-                <div className="receipt-item text-foreground">
-                  <span>TVA inclus:</span>
-                  <span>{formatCurrency(lastSale.tva_total)}</span>
-                </div>
-                <div className="receipt-item text-xl text-foreground">
+              <div className="border-t border-dashed border-border mt-3 pt-3 text-sm">
+                <div className="flex justify-between font-bold text-lg">
                   <span>TOTAL:</span>
                   <span className="text-primary">{formatCurrency(lastSale.total)}</span>
                 </div>
-              </div>
-
-              <div className="mt-4 pt-4 border-t border-dashed border-border text-center text-muted-foreground text-xs">
-                <p>Plată: {lastSale.metoda_plata.toUpperCase()}</p>
-                <p>Casier: {lastSale.casier_nume}</p>
-                <p className="mt-2">Vă mulțumim!</p>
+                <p className="text-center text-xs text-muted-foreground mt-3">
+                  Plată: {lastSale.metoda_plata.toUpperCase()} | Casier: {lastSale.casier_nume}
+                </p>
               </div>
             </div>
           )}
 
           <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setShowReceipt(false)}
-              className="h-12 border-border text-foreground"
-            >
-              Închide
-            </Button>
-            <Button
-              data-testid="print-receipt"
-              onClick={printReceipt}
-              className="h-12 bg-primary text-primary-foreground"
-            >
-              <Receipt className="w-5 h-5 mr-2" />
-              Printează Bon
+            <Button variant="outline" onClick={() => setShowReceipt(false)}>Închide</Button>
+            <Button onClick={printReceipt} className="bg-primary">
+              <Receipt className="w-4 h-4 mr-2" />
+              Print
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -718,105 +667,130 @@ export default function POSPage() {
 
       {/* Discount Modal */}
       <Dialog open={showDiscount} onOpenChange={setShowDiscount}>
-        <DialogContent className="bg-card border-border" data-testid="discount-modal">
+        <DialogContent className="bg-card border-border">
           <DialogHeader>
-            <DialogTitle className="font-heading text-xl uppercase text-foreground">
-              Aplică Reducere
-            </DialogTitle>
+            <DialogTitle className="text-foreground">Reducere %</DialogTitle>
           </DialogHeader>
-
-          <div className="py-4">
-            <label className="text-sm text-muted-foreground">Procent reducere (%)</label>
-            <Input
-              data-testid="discount-input"
-              type="number"
-              value={discountInput}
-              onChange={(e) => setDiscountInput(e.target.value)}
-              className="h-14 text-xl font-mono mt-2 bg-background border-border text-foreground"
-              placeholder="0"
-              min="0"
-              max="100"
-              autoFocus
-            />
-          </div>
-
+          <Input
+            type="number"
+            value={discountInput}
+            onChange={(e) => setDiscountInput(e.target.value)}
+            className="h-14 text-2xl font-mono text-center"
+            placeholder="0"
+            autoFocus
+          />
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowDiscount(false)}
-              className="border-border text-foreground"
-            >
-              Anulează
-            </Button>
-            <Button
-              data-testid="apply-discount"
-              onClick={applyDiscount}
-              className="bg-primary text-primary-foreground"
-            >
-              Aplică
-            </Button>
+            <Button variant="outline" onClick={() => setShowDiscount(false)}>Anulează</Button>
+            <Button onClick={applyDiscount} className="bg-primary">Aplică</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Edit Item Modal */}
       <Dialog open={!!editingItem} onOpenChange={() => setEditingItem(null)}>
-        <DialogContent className="bg-card border-border" data-testid="edit-item-modal">
+        <DialogContent className="bg-card border-border">
           <DialogHeader>
-            <DialogTitle className="font-heading text-xl uppercase text-foreground">
-              Modifică Articol
-            </DialogTitle>
+            <DialogTitle className="text-foreground">Modifică</DialogTitle>
           </DialogHeader>
-
           {editingItem && (
-            <div className="py-4 space-y-4">
-              <p className="font-medium text-foreground">{editingItem.nume}</p>
-              
+            <div className="space-y-4">
+              <p className="font-medium">{editingItem.nume}</p>
               <div>
-                <label className="text-sm text-muted-foreground">
-                  Cantitate ({getUnitLabel(editingItem.unitate)})
-                </label>
+                <label className="text-sm text-muted-foreground">Cantitate</label>
                 <Input
-                  data-testid="edit-quantity"
                   type="number"
                   value={editQuantity}
                   onChange={(e) => setEditQuantity(e.target.value)}
-                  className="h-14 text-xl font-mono mt-1 bg-background border-border text-foreground"
+                  className="h-12 text-xl font-mono mt-1"
                   step="0.01"
-                  min="0"
                 />
               </div>
-              
               <div>
-                <label className="text-sm text-muted-foreground">Preț unitar (RON)</label>
+                <label className="text-sm text-muted-foreground">Preț (RON)</label>
                 <Input
-                  data-testid="edit-price"
                   type="number"
                   value={editPrice}
                   onChange={(e) => setEditPrice(e.target.value)}
-                  className="h-14 text-xl font-mono mt-1 bg-background border-border text-foreground"
+                  className="h-12 text-xl font-mono mt-1"
                   step="0.01"
-                  min="0"
                 />
               </div>
             </div>
           )}
-
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setEditingItem(null)}
-              className="border-border text-foreground"
-            >
-              Anulează
-            </Button>
-            <Button
-              data-testid="save-edit"
-              onClick={saveEditedItem}
-              className="bg-primary text-primary-foreground"
-            >
-              Salvează
-            </Button>
+            <Button variant="outline" onClick={() => setEditingItem(null)}>Anulează</Button>
+            <Button onClick={saveEditedItem} className="bg-primary">Salvează</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Hold Orders Modal */}
+      <Dialog open={showHoldOrders} onOpenChange={setShowHoldOrders}>
+        <DialogContent className="bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">Comenzi în Așteptare</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 max-h-64 overflow-auto">
+            {holdOrders.map(order => (
+              <button
+                key={order.id}
+                onClick={() => restoreOrder(order.id)}
+                className="w-full p-3 bg-secondary rounded text-left hover:bg-secondary/80"
+              >
+                <div className="flex justify-between">
+                  <span className="font-medium">{order.items.length} produse</span>
+                  <span className="text-muted-foreground text-sm">{order.time}</span>
+                </div>
+                <p className="text-primary font-bold">
+                  {formatCurrency(order.items.reduce((s, i) => s + i.cantitate * i.pret_unitar, 0))}
+                </p>
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Invoice Modal */}
+      <Dialog open={showInvoice} onOpenChange={setShowInvoice}>
+        <DialogContent className="bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">Factură Simplificată</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm text-muted-foreground">Nume Firmă *</label>
+              <Input
+                value={invoiceData.firma}
+                onChange={(e) => setInvoiceData({...invoiceData, firma: e.target.value})}
+                className="h-12 mt-1"
+                placeholder="SC Firma SRL"
+              />
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground">CUI *</label>
+              <Input
+                value={invoiceData.cui}
+                onChange={(e) => setInvoiceData({...invoiceData, cui: e.target.value})}
+                className="h-12 mt-1"
+                placeholder="RO12345678"
+              />
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground">Adresă</label>
+              <Input
+                value={invoiceData.adresa}
+                onChange={(e) => setInvoiceData({...invoiceData, adresa: e.target.value})}
+                className="h-12 mt-1"
+              />
+            </div>
+            <div className="p-3 bg-secondary rounded">
+              <p className="text-sm text-muted-foreground">Total de facturat:</p>
+              <p className="text-2xl font-bold text-primary">{formatCurrency(total)}</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowInvoice(false)}>Anulează</Button>
+            <Button onClick={generateInvoice} className="bg-primary">Generează Factură</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

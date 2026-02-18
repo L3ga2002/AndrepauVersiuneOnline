@@ -315,7 +315,7 @@ export default function ProductsPage() {
             Gestiune Produse
           </h1>
           <p className="text-muted-foreground mt-1">
-            {products.length} produse în baza de date
+            {totalProducts} produse în baza de date (pagina {currentPage} din {totalPages})
           </p>
         </div>
         

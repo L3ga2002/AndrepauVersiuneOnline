@@ -500,8 +500,12 @@ export default function ProductsPage() {
                   data-testid="input-cod-bare"
                   value={formData.cod_bare}
                   onChange={(e) => setFormData({...formData, cod_bare: e.target.value})}
-                  className="h-12 mt-1 bg-background border-border text-foreground font-mono"
+                  className={`h-12 mt-1 bg-background border-border text-foreground font-mono ${formData.cod_bare && !editingProduct ? 'border-primary bg-primary/5' : ''}`}
+                  readOnly={!!formData.cod_bare && !editingProduct}
                 />
+                {formData.cod_bare && !editingProduct && (
+                  <p className="text-xs text-primary mt-1">✓ Cod de bare scanat automat</p>
+                )}
               </div>
 
               <div>

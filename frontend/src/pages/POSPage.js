@@ -5,7 +5,7 @@ import { Input } from '../components/ui/input';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { formatCurrency, formatNumber } from '../lib/utils';
-import { Search, Barcode, X, Plus, Minus, Trash2, CreditCard, Banknote, Percent, Receipt, PauseCircle, FileText, Ticket, Clock, Loader2, CheckCircle, Building2, Split } from 'lucide-react';
+import { Search, Barcode, X, Plus, Minus, Trash2, CreditCard, Banknote, Percent, Receipt, PauseCircle, FileText, Ticket, Clock, Loader2, CheckCircle, Building2, Split, Database } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function POSPage() {

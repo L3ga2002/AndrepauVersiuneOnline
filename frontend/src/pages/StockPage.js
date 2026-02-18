@@ -429,7 +429,7 @@ export default function StockPage() {
                       <SelectValue placeholder="Selectați produsul" />
                     </SelectTrigger>
                     <SelectContent className="bg-card border-border max-h-60">
-                      {products.map(p => (
+                      {products.filter(p => p && p.id).map(p => (
                         <SelectItem key={p.id} value={p.id}>{p.nume}</SelectItem>
                       ))}
                     </SelectContent>

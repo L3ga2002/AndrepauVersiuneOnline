@@ -463,6 +463,56 @@ export default function ProductsPage() {
             </Table>
           )}
         </ScrollArea>
+        
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between p-4 border-t border-border">
+            <p className="text-sm text-muted-foreground">
+              Afișare {((currentPage - 1) * ITEMS_PER_PAGE) + 1} - {Math.min(currentPage * ITEMS_PER_PAGE, totalProducts)} din {totalProducts}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="h-10 px-3 border-border text-foreground"
+              >
+                ««
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="h-10 px-4 border-border text-foreground"
+              >
+                « Înapoi
+              </Button>
+              <span className="px-4 text-foreground font-medium">
+                {currentPage} / {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="h-10 px-4 border-border text-foreground"
+              >
+                Înainte »
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="h-10 px-3 border-border text-foreground"
+              >
+                »»
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Create/Edit Dialog */}

@@ -233,7 +233,7 @@ export default function ProductsPage() {
 
     const payload = {
       ...formData,
-      pret_achizitie: parseFloat(formData.pret_achizitie),
+      pret_achizitie: formData.pret_achizitie ? parseFloat(formData.pret_achizitie) : 0,
       pret_vanzare: parseFloat(formData.pret_vanzare),
       tva: parseFloat(formData.tva),
       stoc: parseFloat(formData.stoc),

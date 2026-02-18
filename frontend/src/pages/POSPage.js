@@ -647,7 +647,7 @@ export default function POSPage() {
           </div>
 
           {/* Quick Actions */}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-4 gap-2">
             <Button
               variant="outline"
               onClick={() => setShowDiscount(true)}
@@ -659,10 +659,22 @@ export default function POSPage() {
             <Button
               variant="outline"
               onClick={holdOrder}
+              disabled={cart.length === 0}
               className="h-10 text-xs border-yellow-500 text-yellow-500 hover:bg-yellow-500/10"
+              title="Pune coșul în așteptare"
             >
               <PauseCircle className="w-4 h-4 mr-1" />
-              HOLD
+              AȘTEAPTĂ
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setShowHoldOrders(true)}
+              disabled={holdOrders.length === 0}
+              className={`h-10 text-xs ${holdOrders.length > 0 ? 'border-yellow-500 text-yellow-500' : 'border-border'}`}
+              title="Vezi coșurile în așteptare"
+            >
+              <Clock className="w-4 h-4 mr-1" />
+              {holdOrders.length > 0 ? holdOrders.length : '0'}
             </Button>
             <Button
               variant="outline"
@@ -695,14 +707,22 @@ export default function POSPage() {
             </Button>
           </div>
           
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <Button
               onClick={() => handlePayment('tichete')}
               disabled={cart.length === 0}
               className="h-12 font-bold bg-purple-600 hover:bg-purple-700 text-white"
             >
-              <Ticket className="w-5 h-5 mr-2" />
+              <Ticket className="w-4 h-4 mr-1" />
               TICHETE
+            </Button>
+            <Button
+              onClick={() => setShowCombinedPayment(true)}
+              disabled={cart.length === 0}
+              className="h-12 font-bold bg-orange-600 hover:bg-orange-700 text-white"
+            >
+              <Split className="w-4 h-4 mr-1" />
+              COMBINAT
             </Button>
             <Button
               variant="destructive"
@@ -710,7 +730,7 @@ export default function POSPage() {
               disabled={cart.length === 0}
               className="h-12 font-bold"
             >
-              <X className="w-5 h-5 mr-2" />
+              <X className="w-4 h-4 mr-1" />
               ANULEAZĂ
             </Button>
           </div>

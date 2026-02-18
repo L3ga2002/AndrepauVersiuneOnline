@@ -479,7 +479,7 @@ export default function ProductsPage() {
               <div>
                 <Label className="text-muted-foreground">Categorie *</Label>
                 <Select 
-                  value={formData.categorie} 
+                  value={formData.categorie || undefined} 
                   onValueChange={(v) => setFormData({...formData, categorie: v})}
                 >
                   <SelectTrigger data-testid="input-categorie" className="h-12 mt-1 bg-background border-border text-foreground">

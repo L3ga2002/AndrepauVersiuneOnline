@@ -370,15 +370,52 @@ export default function POSPage() {
           nr_reg_com: data.nr_reg_com || '',
           platitor_tva: data.platitor_tva || false
         });
-        toast.success(`Firmă găsită: ${data.denumire}`);
+        if (data.from_cache) {
+          toast.success(`Firmă găsită în cache: ${data.denumire}`);
+        } else {
+          toast.success(`Firmă găsită: ${data.denumire}`);
+        }
       } else {
         const error = await response.json();
         toast.error(error.detail || 'Firma nu a fost găsită');
       }
     } catch (error) {
-      toast.error('Eroare la căutarea în ANAF');
+      toast.error('Eroare la căutarea firmei');
     } finally {
       setSearchingCUI(false);
+    }
+  };
+
+  // Save company manually to cache
+  const saveCompanyToCache = async () => {
+    if (!invoiceData.cui || !invoiceData.firma) {
+      toast.error('Completați cel puțin CUI și Nume Firmă');
+      return;
+    }
+    
+    try {
+      const response = await fetch(`${API_URL}/companies/save`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          cui: invoiceData.cui,
+          denumire: invoiceData.firma,
+          adresa: invoiceData.adresa,
+          nr_reg_com: invoiceData.nr_reg_com,
+          platitor_tva: invoiceData.platitor_tva
+        })
+      });
+      
+      if (response.ok) {
+        toast.success('Firmă salvată în baza de date locală');
+      } else {
+        toast.error('Eroare la salvarea firmei');
+      }
+    } catch (error) {
+      toast.error('Eroare la salvarea firmei');
     }
   };
 

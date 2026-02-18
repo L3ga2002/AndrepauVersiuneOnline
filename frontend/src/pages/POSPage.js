@@ -849,69 +849,256 @@ export default function POSPage() {
       <Dialog open={showHoldOrders} onOpenChange={setShowHoldOrders}>
         <DialogContent className="bg-card border-border">
           <DialogHeader>
-            <DialogTitle className="text-foreground">Comenzi în Așteptare</DialogTitle>
+            <DialogTitle className="text-foreground flex items-center gap-2">
+              <Clock className="w-5 h-5 text-yellow-500" />
+              Comenzi în Așteptare ({holdOrders.length})
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-2 max-h-64 overflow-auto">
-            {holdOrders.map(order => (
-              <button
-                key={order.id}
-                onClick={() => restoreOrder(order.id)}
-                className="w-full p-3 bg-secondary rounded text-left hover:bg-secondary/80"
-              >
-                <div className="flex justify-between">
-                  <span className="font-medium">{order.items.length} produse</span>
-                  <span className="text-muted-foreground text-sm">{order.time}</span>
-                </div>
-                <p className="text-primary font-bold">
-                  {formatCurrency(order.items.reduce((s, i) => s + i.cantitate * i.pret_unitar, 0))}
-                </p>
-              </button>
-            ))}
-          </div>
+          {holdOrders.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+              <Clock className="w-12 h-12 mb-2 opacity-50" />
+              <p>Nu există comenzi în așteptare</p>
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-64 overflow-auto">
+              {holdOrders.map(order => (
+                <button
+                  key={order.id}
+                  onClick={() => restoreOrder(order.id)}
+                  className="w-full p-4 bg-secondary rounded-lg text-left hover:bg-secondary/80 border border-border transition-colors"
+                >
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-medium text-foreground">{order.items.length} produse</span>
+                    <span className="text-muted-foreground text-sm">{order.time}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">
+                      {order.items.map(i => i.nume).slice(0, 2).join(', ')}
+                      {order.items.length > 2 && '...'}
+                    </span>
+                    <span className="text-lg font-bold text-primary">
+                      {formatCurrency(order.items.reduce((s, i) => s + i.cantitate * i.pret_unitar, 0))}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowHoldOrders(false)}>Închide</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Invoice Modal */}
+      {/* Invoice Modal with ANAF Search */}
       <Dialog open={showInvoice} onOpenChange={setShowInvoice}>
-        <DialogContent className="bg-card border-border">
+        <DialogContent className="bg-card border-border max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-foreground">Factură Simplificată</DialogTitle>
+            <DialogTitle className="text-foreground flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-primary" />
+              Factură Simplificată
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {/* CUI Search */}
+            <div>
+              <label className="text-sm text-muted-foreground">CUI *</label>
+              <div className="flex gap-2 mt-1">
+                <Input
+                  value={invoiceData.cui}
+                  onChange={(e) => setInvoiceData({...invoiceData, cui: e.target.value})}
+                  className="h-12 flex-1 font-mono"
+                  placeholder="12345678 sau RO12345678"
+                  onKeyDown={(e) => e.key === 'Enter' && searchCUI()}
+                />
+                <Button
+                  onClick={searchCUI}
+                  disabled={searchingCUI || !invoiceData.cui}
+                  className="h-12 px-4 bg-primary"
+                >
+                  {searchingCUI ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <>
+                      <Search className="w-5 h-5 mr-1" />
+                      Caută
+                    </>
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Introduceți CUI-ul și apăsați Caută pentru completare automată din ANAF
+              </p>
+            </div>
+
+            {/* Auto-filled data */}
             <div>
               <label className="text-sm text-muted-foreground">Nume Firmă *</label>
               <Input
                 value={invoiceData.firma}
                 onChange={(e) => setInvoiceData({...invoiceData, firma: e.target.value})}
                 className="h-12 mt-1"
-                placeholder="SC Firma SRL"
+                placeholder="Se completează automat din ANAF"
               />
             </div>
+            
             <div>
-              <label className="text-sm text-muted-foreground">CUI *</label>
-              <Input
-                value={invoiceData.cui}
-                onChange={(e) => setInvoiceData({...invoiceData, cui: e.target.value})}
-                className="h-12 mt-1"
-                placeholder="RO12345678"
-              />
-            </div>
-            <div>
-              <label className="text-sm text-muted-foreground">Adresă</label>
+              <label className="text-sm text-muted-foreground">Adresă Sediu</label>
               <Input
                 value={invoiceData.adresa}
                 onChange={(e) => setInvoiceData({...invoiceData, adresa: e.target.value})}
                 className="h-12 mt-1"
+                placeholder="Se completează automat din ANAF"
               />
             </div>
-            <div className="p-3 bg-secondary rounded">
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm text-muted-foreground">Nr. Reg. Comerț</label>
+                <Input
+                  value={invoiceData.nr_reg_com}
+                  onChange={(e) => setInvoiceData({...invoiceData, nr_reg_com: e.target.value})}
+                  className="h-12 mt-1 font-mono"
+                  placeholder="J40/xxx/xxxx"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground">Plătitor TVA</label>
+                <div className="h-12 mt-1 flex items-center px-3 bg-secondary rounded-md">
+                  {invoiceData.platitor_tva ? (
+                    <span className="flex items-center gap-2 text-green-500">
+                      <CheckCircle className="w-4 h-4" />
+                      Da
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">Nu</span>
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-4 bg-secondary/50 rounded-lg border border-border">
               <p className="text-sm text-muted-foreground">Total de facturat:</p>
-              <p className="text-2xl font-bold text-primary">{formatCurrency(total)}</p>
+              <p className="text-3xl font-bold text-primary">{formatCurrency(total)}</p>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowInvoice(false)}>Anulează</Button>
-            <Button onClick={generateInvoice} className="bg-primary">Generează Factură</Button>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => {
+              setShowInvoice(false);
+              setInvoiceData({ firma: '', cui: '', adresa: '', nr_reg_com: '', platitor_tva: false });
+            }}>
+              Anulează
+            </Button>
+            <Button 
+              onClick={generateInvoice} 
+              disabled={!invoiceData.firma || !invoiceData.cui}
+              className="bg-primary"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Generează Factură
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Combined Payment Modal */}
+      <Dialog open={showCombinedPayment} onOpenChange={setShowCombinedPayment}>
+        <DialogContent className="bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-foreground flex items-center gap-2">
+              <Split className="w-5 h-5 text-orange-500" />
+              Plată Combinată
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="p-4 bg-secondary/50 rounded-lg border border-border text-center">
+              <p className="text-sm text-muted-foreground">Total de plată:</p>
+              <p className="text-3xl font-bold text-primary">{formatCurrency(total)}</p>
+            </div>
+            
+            <div>
+              <label className="text-sm text-muted-foreground flex items-center gap-2">
+                <Banknote className="w-4 h-4 text-green-500" />
+                Numerar (RON)
+              </label>
+              <Input
+                type="number"
+                step="0.01"
+                value={cashAmount}
+                onChange={(e) => setCashAmount(e.target.value)}
+                className="h-14 mt-1 text-xl font-mono text-center"
+                placeholder="0.00"
+              />
+            </div>
+            
+            <div>
+              <label className="text-sm text-muted-foreground flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-blue-500" />
+                Card (RON)
+              </label>
+              <Input
+                type="number"
+                step="0.01"
+                value={cardAmount}
+                onChange={(e) => setCardAmount(e.target.value)}
+                className="h-14 mt-1 text-xl font-mono text-center"
+                placeholder="0.00"
+              />
+            </div>
+            
+            <div>
+              <label className="text-sm text-muted-foreground flex items-center gap-2">
+                <Ticket className="w-4 h-4 text-purple-500" />
+                Tichete (RON)
+              </label>
+              <Input
+                type="number"
+                step="0.01"
+                value={ticketAmount}
+                onChange={(e) => setTicketAmount(e.target.value)}
+                className="h-14 mt-1 text-xl font-mono text-center"
+                placeholder="0.00"
+              />
+            </div>
+            
+            <div className="p-3 bg-background rounded-lg border border-border">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Sumă introdusă:</span>
+                <span className={`font-bold ${
+                  (parseFloat(cashAmount) || 0) + (parseFloat(cardAmount) || 0) + (parseFloat(ticketAmount) || 0) >= total
+                    ? 'text-green-500'
+                    : 'text-red-500'
+                }`}>
+                  {formatCurrency((parseFloat(cashAmount) || 0) + (parseFloat(cardAmount) || 0) + (parseFloat(ticketAmount) || 0))}
+                </span>
+              </div>
+              {(parseFloat(cashAmount) || 0) + (parseFloat(cardAmount) || 0) + (parseFloat(ticketAmount) || 0) > total && (
+                <div className="flex justify-between text-sm mt-1">
+                  <span className="text-muted-foreground">Rest:</span>
+                  <span className="font-bold text-green-500">
+                    {formatCurrency((parseFloat(cashAmount) || 0) + (parseFloat(cardAmount) || 0) + (parseFloat(ticketAmount) || 0) - total)}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => {
+              setShowCombinedPayment(false);
+              setCashAmount('');
+              setCardAmount('');
+              setTicketAmount('');
+            }}>
+              Anulează
+            </Button>
+            <Button 
+              onClick={handleCombinedPayment}
+              disabled={(parseFloat(cashAmount) || 0) + (parseFloat(cardAmount) || 0) + (parseFloat(ticketAmount) || 0) < total}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              <CheckCircle className="w-4 h-4 mr-2" />
+              Finalizează Plata
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

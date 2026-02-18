@@ -343,6 +343,105 @@ export default function POSPage() {
     }
   };
 
+  // Search company by CUI in ANAF
+  const searchCUI = async () => {
+    if (!invoiceData.cui || invoiceData.cui.trim().length < 5) {
+      toast.error('Introduceți un CUI valid (minim 5 cifre)');
+      return;
+    }
+    
+    setSearchingCUI(true);
+    try {
+      const response = await fetch(`${API_URL}/anaf/search-cui`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ cui: invoiceData.cui })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setInvoiceData({
+          ...invoiceData,
+          firma: data.denumire || '',
+          adresa: data.adresa || '',
+          nr_reg_com: data.nr_reg_com || '',
+          platitor_tva: data.platitor_tva || false
+        });
+        toast.success(`Firmă găsită: ${data.denumire}`);
+      } else {
+        const error = await response.json();
+        toast.error(error.detail || 'Firma nu a fost găsită');
+      }
+    } catch (error) {
+      toast.error('Eroare la căutarea în ANAF');
+    } finally {
+      setSearchingCUI(false);
+    }
+  };
+
+  // Handle combined payment
+  const handleCombinedPayment = async () => {
+    const cash = parseFloat(cashAmount) || 0;
+    const card = parseFloat(cardAmount) || 0;
+    const tickets = parseFloat(ticketAmount) || 0;
+    const totalPaid = cash + card + tickets;
+    
+    if (totalPaid < total) {
+      toast.error(`Suma totală (${formatCurrency(totalPaid)}) este mai mică decât totalul (${formatCurrency(total)})`);
+      return;
+    }
+    
+    try {
+      const saleData = {
+        items: cart.map(item => ({
+          product_id: item.product_id,
+          nume: item.nume,
+          cantitate: item.cantitate,
+          pret_unitar: item.pret_unitar,
+          tva: item.tva
+        })),
+        subtotal: subtotal,
+        tva_total: tvaTotal,
+        total: total,
+        discount_percent: discount,
+        metoda_plata: 'combinat',
+        suma_numerar: cash,
+        suma_card: card + tickets,
+        casier_id: user.id
+      };
+
+      const response = await fetch(`${API_URL}/sales`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(saleData)
+      });
+
+      if (response.ok) {
+        const sale = await response.json();
+        setLastSale(sale);
+        setShowCombinedPayment(false);
+        setShowReceipt(true);
+        clearCart();
+        fetchProducts();
+        setCashAmount('');
+        setCardAmount('');
+        setTicketAmount('');
+        toast.success('Vânzare finalizată cu succes');
+      } else {
+        const error = await response.json();
+        toast.error(error.detail || 'Eroare la procesarea vânzării');
+      }
+    } catch (error) {
+      toast.error('Eroare la procesarea plății');
+    }
+  };
+
   // Generate simplified invoice
   const generateInvoice = async () => {
     if (!invoiceData.firma || !invoiceData.cui) {
@@ -353,6 +452,7 @@ export default function POSPage() {
     // Process as regular sale but mark as invoice
     await handlePayment('numerar');
     setShowInvoice(false);
+    setInvoiceData({ firma: '', cui: '', adresa: '', nr_reg_com: '', platitor_tva: false });
     toast.success('Factură simplificată generată');
   };
 

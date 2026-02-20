@@ -69,6 +69,7 @@ Create a store management + POS application for a construction materials and too
 - ✅ Added **Combined Payment** - Pay with any combination of Cash + Card + Meal Vouchers
 - ✅ Added **Invoice with ANAF Search** - Enter CUI, click "Caută", auto-fills company name, address, reg. number, VAT status
 - ✅ All buttons renamed to Romanian: AȘTEAPTĂ (not HOLD), COMBINAT, FACT, etc.
+- ✅ **IMPORTED 3,774,060 COMPANIES** from ONRC (data.gov.ro) - Instant CUI search without depending on ANAF servers!
 
 ### Date: 17.02.2026 (Previous Session)
 - Full backend API with FastAPI + MongoDB

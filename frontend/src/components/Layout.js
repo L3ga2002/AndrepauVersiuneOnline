@@ -14,7 +14,8 @@ import {
   Menu, 
   X,
   AlertTriangle,
-  Wrench
+  Wrench,
+  Calculator
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -24,6 +25,7 @@ const navigation = [
   { name: 'Stoc & Inventar', href: '/stock', icon: Archive, roles: ['admin', 'casier'] },
   { name: 'Rapoarte', href: '/reports', icon: BarChart3, roles: ['admin', 'casier'] },
   { name: 'Furnizori', href: '/suppliers', icon: Truck, roles: ['admin'] },
+  { name: 'Operațiuni Casă', href: '/cash-operations', icon: Calculator, roles: ['admin'] },
   { name: 'Setări', href: '/settings', icon: Settings, roles: ['admin'] },
 ];
 

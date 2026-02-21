@@ -141,6 +141,11 @@ function AppRoutes() {
             <SettingsPage />
           </AdminRoute>
         } />
+        <Route path="cash-operations" element={
+          <AdminRoute>
+            <CashOperationsPage />
+          </AdminRoute>
+        } />
       </Route>
       
       <Route path="*" element={<Navigate to="/pos" replace />} />

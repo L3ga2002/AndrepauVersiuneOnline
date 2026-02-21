@@ -696,6 +696,98 @@ async def get_daily_sales(days: int = 30, user: dict = Depends(get_current_user)
     results = await db.sales.aggregate(pipeline).to_list(days)
     return [{"date": r["_id"], "total": round(r["total"], 2), "count": r["count"]} for r in results]
 
+# ==================== CASH OPERATIONS ROUTES ====================
+
+@api_router.post("/cash-operations")
+async def create_cash_operation(data: dict, user: dict = Depends(get_current_user)):
+    """Save a cash operation (Cash In, Cash Out, Report X, Report Z)"""
+    operation = {
+        "id": str(uuid.uuid4()),
+        "type": data.get("type"),  # CASH_IN, CASH_OUT, REPORT_X, REPORT_Z
+        "amount": data.get("amount", 0),
+        "description": data.get("description", ""),
+        "operator_id": data.get("operator_id"),
+        "operator_name": data.get("operator_name"),
+        "timestamp": datetime.now(timezone.utc),
+        "date_str": datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    }
+    
+    await db.cash_operations.insert_one(operation)
+    operation.pop("_id", None)
+    return operation
+
+@api_router.get("/cash-operations/history")
+async def get_cash_operations_history(
+    limit: int = 50,
+    date: Optional[str] = None,
+    user: dict = Depends(get_current_user)
+):
+    """Get cash operations history"""
+    query = {}
+    if date:
+        query["date_str"] = date
+    
+    operations = await db.cash_operations.find(query, {"_id": 0}).sort("timestamp", -1).to_list(limit)
+    return {"operations": operations}
+
+@api_router.get("/cash-operations/daily-stats")
+async def get_daily_cash_stats(user: dict = Depends(get_current_user)):
+    """Get daily statistics for cash operations"""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # Sales totals by payment method
+    sales_pipeline = [
+        {"$match": {"created_at": {"$gte": today_start}}},
+        {"$group": {
+            "_id": "$metoda_plata",
+            "total": {"$sum": "$total"},
+            "count": {"$sum": 1}
+        }}
+    ]
+    sales_by_method = await db.sales.aggregate(sales_pipeline).to_list(10)
+    
+    total_cash = 0
+    total_card = 0
+    total_voucher = 0
+    receipts_count = 0
+    
+    for s in sales_by_method:
+        receipts_count += s.get("count", 0)
+        if s["_id"] in ["numerar", "cash"]:
+            total_cash = s.get("total", 0)
+        elif s["_id"] in ["card"]:
+            total_card = s.get("total", 0)
+        elif s["_id"] in ["tichete", "voucher"]:
+            total_voucher = s.get("total", 0)
+    
+    # Cash In/Out totals
+    cash_ops_pipeline = [
+        {"$match": {"date_str": today}},
+        {"$group": {
+            "_id": "$type",
+            "total": {"$sum": "$amount"}
+        }}
+    ]
+    cash_ops = await db.cash_operations.aggregate(cash_ops_pipeline).to_list(10)
+    
+    cash_in = 0
+    cash_out = 0
+    for op in cash_ops:
+        if op["_id"] == "CASH_IN":
+            cash_in = op.get("total", 0)
+        elif op["_id"] == "CASH_OUT":
+            cash_out = op.get("total", 0)
+    
+    return {
+        "totalCash": round(total_cash, 2),
+        "totalCard": round(total_card, 2),
+        "totalVoucher": round(total_voucher, 2),
+        "cashIn": round(cash_in, 2),
+        "cashOut": round(cash_out, 2),
+        "receiptsCount": receipts_count
+    }
+
 # ==================== BACKUP ROUTE ====================
 
 @api_router.get("/backup")

@@ -10,6 +10,7 @@ import StockPage from "./pages/StockPage";
 import ReportsPage from "./pages/ReportsPage";
 import SuppliersPage from "./pages/SuppliersPage";
 import SettingsPage from "./pages/SettingsPage";
+import CashOperationsPage from "./pages/CashOperationsPage";
 import Layout from "./components/Layout";
 import PWAInstallPrompt from "./components/PWAInstallPrompt";
 import axios from "axios";

@@ -852,6 +852,33 @@ async def get_daily_cash_stats(user: dict = Depends(get_current_user)):
         "receiptsCount": receipts_count
     }
 
+# ==================== BRIDGE DOWNLOAD ====================
+
+@api_router.get("/bridge/download")
+async def download_bridge_zip(user: dict = Depends(get_current_user)):
+    """Download Bridge Service as ZIP (fiscal_bridge.py + install + start scripts)"""
+    import zipfile
+    
+    bridge_dir = Path(__file__).parent
+    files_to_zip = {
+        "fiscal_bridge.py": bridge_dir / "fiscal_bridge.py",
+        "install_bridge.bat": bridge_dir / "install_bridge.bat",
+        "start_bridge.bat": bridge_dir / "start_bridge.bat",
+    }
+    
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for name, path in files_to_zip.items():
+            if path.exists():
+                zf.write(path, name)
+    
+    zip_buffer.seek(0)
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=ANDREPAU_Bridge_Service.zip"}
+    )
+
 # ==================== BACKUP ROUTE ====================
 
 @api_router.get("/backup")

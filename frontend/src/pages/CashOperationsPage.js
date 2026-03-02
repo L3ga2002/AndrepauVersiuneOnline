@@ -8,7 +8,7 @@ import { ScrollArea } from '../components/ui/scroll-area';
 import { 
   FileText, FileCheck, ArrowDownCircle, ArrowUpCircle, 
   Wallet, History, AlertTriangle, CheckCircle, XCircle, 
-  Loader2, RefreshCw, Settings2, Wifi, WifiOff
+  Loader2, RefreshCw, Settings2, Wifi, WifiOff, Download
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency } from '../lib/utils';
@@ -245,14 +245,27 @@ export default function CashOperationsPage() {
         <Card className="border-red-500/50 bg-red-500/10" data-testid="bridge-disconnected-alert">
           <CardContent className="p-4 flex items-start gap-3">
             <AlertTriangle className="w-6 h-6 text-red-500 shrink-0 mt-0.5" />
-            <div>
+            <div className="flex-1">
               <p className="font-medium text-red-500">Bridge Service nu este pornit!</p>
               <p className="text-sm text-muted-foreground mt-1">Pe PC-ul din magazin:</p>
               <ol className="text-sm text-muted-foreground mt-1 list-decimal ml-4 space-y-0.5">
+                <li>Descarcati fisierele Bridge (butonul de mai jos)</li>
+                <li>Dezarhivati ZIP-ul pe Desktop</li>
+                <li>Dublu-click pe <strong>install_bridge.bat</strong> (o singura data)</li>
                 <li>Porniti <strong>SuccesDrv</strong> si apasati <strong>"Start procesare"</strong></li>
-                <li>Dublu-click pe <strong>start_bridge.bat</strong> (sau rulati <code>python fiscal_bridge.py</code>)</li>
+                <li>Dublu-click pe <strong>start_bridge.bat</strong></li>
                 <li>Deschideti <strong>http://localhost:5555/test</strong> pentru verificare</li>
               </ol>
+              <Button
+                className="mt-3 bg-primary hover:bg-primary/90"
+                onClick={() => {
+                  window.open(`${API_URL}/bridge/download`, '_blank');
+                }}
+                data-testid="download-bridge-btn"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Descarca Bridge Service (ZIP)
+              </Button>
             </div>
           </CardContent>
         </Card>

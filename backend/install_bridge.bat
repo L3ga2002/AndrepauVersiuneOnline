@@ -25,9 +25,13 @@ echo [OK] Python gasit:
 python --version
 echo.
 
-:: Instaleaza dependente
+:: Instaleaza dependente (incearca pip, apoi python -m pip)
 echo Instalare dependente...
-pip install flask flask-cors
+pip install flask flask-cors 2>nul
+if %errorlevel% neq 0 (
+    echo pip direct nu merge, incerc python -m pip...
+    python -m pip install flask flask-cors
+)
 echo.
 
 if %errorlevel% neq 0 (

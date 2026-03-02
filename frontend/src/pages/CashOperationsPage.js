@@ -258,8 +258,23 @@ export default function CashOperationsPage() {
               </ol>
               <Button
                 className="mt-3 bg-primary hover:bg-primary/90"
-                onClick={() => {
-                  window.open(`${API_URL}/bridge/download`, '_blank');
+                onClick={async () => {
+                  try {
+                    const resp = await fetch(`${API_URL}/bridge/download`, {
+                      headers: { Authorization: `Bearer ${token}` }
+                    });
+                    if (!resp.ok) throw new Error('Eroare descărcare');
+                    const blob = await resp.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'ANDREPAU_Bridge_Service.zip';
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    toast.success('Bridge Service descarcat!');
+                  } catch {
+                    toast.error('Eroare la descarcare');
+                  }
                 }}
                 data-testid="download-bridge-btn"
               >

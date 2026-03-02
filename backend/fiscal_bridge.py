@@ -33,7 +33,6 @@ import json
 
 def find_succesdrv_path():
     """Cauta automat folderul SuccesDrv pe disc"""
-    # Cai cunoscute
     known_paths = [
         r"C:\kit sistem\ANDREPAU\SuccesDrv_8_3",
         r"C:\kit sistem\ANDREPAU\SuccesDrv",
@@ -46,18 +45,55 @@ def find_succesdrv_path():
         if os.path.isdir(p):
             return p
     
-    # Cauta SuccesDrv.exe pe C:
     for root_dir in [r"C:\kit sistem", r"C:\\"]:
         if os.path.isdir(root_dir):
             for dirpath, dirnames, filenames in os.walk(root_dir):
                 for f in filenames:
-                    if f.lower() == "succesdrv.exe":
+                    if 'succesdrv' in f.lower() and f.lower().endswith('.exe'):
                         return dirpath
-                # Nu cauta prea adanc
                 if dirpath.count(os.sep) - root_dir.count(os.sep) > 4:
                     dirnames.clear()
     
     return None
+
+def parse_ini_file(ini_path):
+    """Citeste SuccesDRV.INI si extrage configurarile"""
+    config = {
+        'masca_bon': 'ONLINE',
+        'extensie_bon': 'TXT',
+        'port': '1',
+        'tip_comunicatie': '0',
+        'ip': '',
+        'port_tcp': '',
+    }
+    
+    if not os.path.exists(ini_path):
+        return config
+    
+    try:
+        with open(ini_path, 'r', encoding='cp1250') as f:
+            for line in f:
+                line = line.strip()
+                if '=' in line:
+                    key, val = line.split('=', 1)
+                    key = key.strip().lower()
+                    val = val.strip()
+                    if key == 'masca_bon':
+                        config['masca_bon'] = val
+                    elif key == 'extensie_bon':
+                        config['extensie_bon'] = val
+                    elif key == 'port':
+                        config['port'] = val
+                    elif key == 'tipcomunicatie':
+                        config['tip_comunicatie'] = val
+                    elif key == 'ip':
+                        config['ip'] = val
+                    elif key == 'porttcp':
+                        config['port_tcp'] = val
+    except Exception as e:
+        print(f"Eroare citire INI: {e}")
+    
+    return config
 
 # ===================== CONFIGURARE =====================
 
@@ -67,7 +103,13 @@ if len(sys.argv) > 1:
 else:
     SUCCESDRV_PATH = find_succesdrv_path() or r"C:\kit sistem\ANDREPAU\SuccesDrv_8_3"
 
-ONLINE_FILE = os.path.join(SUCCESDRV_PATH, "ONLINE.TXT")
+# Citeste configurarea din INI
+INI_PATH = os.path.join(SUCCESDRV_PATH, 'SuccesDRV.INI')
+INI_CONFIG = parse_ini_file(INI_PATH)
+
+# Construieste numele fisierelor din INI (Masca_Bon + Extensie_Bon)
+COMMAND_FILENAME = f"{INI_CONFIG['masca_bon']}.{INI_CONFIG['extensie_bon']}"
+ONLINE_FILE = os.path.join(SUCCESDRV_PATH, COMMAND_FILENAME)
 ERROR_FILE = os.path.join(SUCCESDRV_PATH, "ERROR.TXT")
 
 BRIDGE_PORT = 5555
@@ -219,16 +261,19 @@ def extract_error_code(response: str) -> str:
 def health_check():
     """Verifica daca bridge-ul functioneaza"""
     path_exists = os.path.isdir(SUCCESDRV_PATH)
-    exe_exists = any(
-        os.path.exists(os.path.join(SUCCESDRV_PATH, f))
-        for f in ['SuccesDrv.exe', 'succesdrv.exe', 'SUCCESDRV.EXE']
-    )
+    exe_found = False
+    if path_exists:
+        for f in os.listdir(SUCCESDRV_PATH):
+            if 'succesdrv' in f.lower() and f.lower().endswith('.exe'):
+                exe_found = True
+                break
     
     return jsonify({
         'status': 'ok',
         'driver_path': SUCCESDRV_PATH,
         'driver_exists': path_exists,
-        'exe_found': exe_exists,
+        'exe_found': exe_found,
+        'command_file': COMMAND_FILENAME,
         'timestamp': datetime.now().isoformat()
     })
 
@@ -245,15 +290,18 @@ def diagnostic():
         'ok': path_ok
     })
     
-    # 2. Verifica SuccesDrv.exe
+    # 2. Verifica SuccesDrv exe
     exe_found = False
+    exe_name = None
     for f in os.listdir(SUCCESDRV_PATH) if path_ok else []:
-        if f.lower() == 'succesdrv.exe':
+        if 'succesdrv' in f.lower() and f.lower().endswith('.exe'):
             exe_found = True
+            exe_name = f
             break
     checks.append({
         'test': 'SuccesDrv.exe gasit',
-        'ok': exe_found
+        'ok': exe_found,
+        'note': exe_name if exe_found else 'Nu s-a gasit niciun exe SuccesDrv'
     })
     
     # 3. Verifica daca putem scrie in folder
@@ -312,6 +360,13 @@ def diagnostic():
         'test': 'Continut SuccesDRV.INI',
         'ok': ini_content is not None,
         'content': ini_content
+    })
+    
+    # 7. Configurare fisiere din INI
+    checks.append({
+        'test': 'Fisier comenzi (din INI)',
+        'ok': True,
+        'note': f'{COMMAND_FILENAME} (Masca={INI_CONFIG["masca_bon"]}, Ext={INI_CONFIG["extensie_bon"]})'
     })
     
     all_ok = all(c['ok'] for c in checks[:4])
@@ -773,6 +828,8 @@ if __name__ == '__main__':
     print("=" * 62)
     print(f"  Cale SuccesDrv: {SUCCESDRV_PATH}")
     print(f"  Folder exista:  {os.path.isdir(SUCCESDRV_PATH)}")
+    print(f"  Fisier comenzi: {COMMAND_FILENAME}")
+    print(f"  INI config:     Masca={INI_CONFIG['masca_bon']}, Ext={INI_CONFIG['extensie_bon']}")
     print(f"  Port:           {BRIDGE_PORT}")
     print("-" * 62)
     print(f"  PAGINA TEST:    http://localhost:{BRIDGE_PORT}/test")

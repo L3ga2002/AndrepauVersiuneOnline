@@ -138,6 +138,9 @@ class SaleCreate(BaseModel):
     suma_numerar: float = 0
     suma_card: float = 0
     casier_id: str
+    transaction_id: Optional[str] = None
+    fiscal_number: Optional[str] = None
+    fiscal_status: str = "none"  # none, printed, cancelled
 
 class SaleResponse(BaseModel):
     id: str
@@ -153,6 +156,9 @@ class SaleResponse(BaseModel):
     casier_id: str
     casier_nume: str
     created_at: str
+    transaction_id: Optional[str] = None
+    fiscal_number: Optional[str] = None
+    fiscal_status: str = "none"
 
 class NIRItem(BaseModel):
     product_id: str
@@ -410,6 +416,13 @@ async def generate_bon_number():
 
 @api_router.post("/sales", response_model=SaleResponse)
 async def create_sale(sale: SaleCreate, user: dict = Depends(get_current_user)):
+    # Duplicate prevention via transaction_id
+    if sale.transaction_id:
+        existing = await db.sales.find_one({"transaction_id": sale.transaction_id}, {"_id": 0})
+        if existing:
+            logger.info(f"Duplicate sale blocked: {sale.transaction_id}")
+            return SaleResponse(**existing)
+    
     # Generate bon number
     numar_bon = await generate_bon_number()
     
@@ -421,6 +434,7 @@ async def create_sale(sale: SaleCreate, user: dict = Depends(get_current_user)):
         "id": str(uuid.uuid4()),
         "numar_bon": numar_bon,
         **sale.model_dump(),
+        "transaction_id": sale.transaction_id or str(uuid.uuid4()),
         "casier_nume": casier_nume,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -459,6 +473,56 @@ async def get_sale(sale_id: str, user: dict = Depends(get_current_user)):
     if not sale:
         raise HTTPException(status_code=404, detail="Vânzare negăsită")
     return SaleResponse(**sale)
+
+@api_router.post("/sales/{sale_id}/cancel")
+async def cancel_sale(sale_id: str, user: dict = Depends(get_current_user)):
+    """Cancel a sale and restore stock"""
+    sale = await db.sales.find_one({"id": sale_id}, {"_id": 0})
+    if not sale:
+        raise HTTPException(status_code=404, detail="Vânzare negăsită")
+    
+    if sale.get("fiscal_status") == "cancelled":
+        return {"message": "Vânzarea este deja anulată"}
+    
+    # Restore stock for each item
+    for item in sale.get("items", []):
+        await db.products.update_one(
+            {"id": item["product_id"]},
+            {"$inc": {"stoc": item["cantitate"]}}
+        )
+    
+    # Mark as cancelled
+    await db.sales.update_one(
+        {"id": sale_id},
+        {"$set": {"fiscal_status": "cancelled"}}
+    )
+    
+    logger.info(f"Sale {sale_id} cancelled, stock restored")
+    return {"message": "Vânzare anulată, stoc restaurat"}
+
+# ==================== SETTINGS ROUTES ====================
+
+@api_router.get("/settings/fiscal")
+async def get_fiscal_settings(user: dict = Depends(get_current_user)):
+    """Get fiscal printer settings"""
+    settings = await db.settings.find_one({"key": "fiscal"}, {"_id": 0})
+    if not settings:
+        return {
+            "fiscal_mode": False,
+            "bridge_url": "http://localhost:5555",
+            "auto_print": True
+        }
+    return settings.get("value", {})
+
+@api_router.post("/settings/fiscal")
+async def update_fiscal_settings(data: dict, user: dict = Depends(require_admin)):
+    """Update fiscal printer settings"""
+    await db.settings.update_one(
+        {"key": "fiscal"},
+        {"$set": {"key": "fiscal", "value": data, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+    return {"message": "Setări fiscale salvate", "settings": data}
 
 # ==================== NIR ROUTES ====================
 

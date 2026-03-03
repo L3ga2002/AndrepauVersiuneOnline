@@ -291,10 +291,36 @@ export default function CashOperationsPage() {
         <Card className="border-green-500/30 bg-green-500/5">
           <CardContent className="p-3 flex items-center gap-3 text-sm">
             <CheckCircle className="w-5 h-5 text-green-500 shrink-0" />
-            <span className="text-muted-foreground">
+            <span className="text-muted-foreground flex-1">
               Bridge conectat | Cale: <code className="text-green-400">{bridgeStatus.path}</code>
               {bridgeStatus.exeFound ? ' | SuccesDrv.exe gasit' : ''}
             </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                try {
+                  const resp = await fetch(`${API_URL}/bridge/download`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                  });
+                  if (!resp.ok) throw new Error('Eroare');
+                  const blob = await resp.blob();
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'ANDREPAU_Bridge_Service.zip';
+                  a.click();
+                  window.URL.revokeObjectURL(url);
+                  toast.success('Bridge Service descarcat!');
+                } catch {
+                  toast.error('Eroare la descarcare');
+                }
+              }}
+              data-testid="download-bridge-btn-connected"
+            >
+              <Download className="w-4 h-4 mr-1" />
+              Actualizare Bridge
+            </Button>
           </CardContent>
         </Card>
       )}

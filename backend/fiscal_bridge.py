@@ -379,7 +379,7 @@ def diagnostic():
 
 @app.route('/fiscal/receipt', methods=['POST'])
 def print_receipt():
-    """Printeaza bon fiscal"""
+    """Printeaza bon fiscal - format SuccesM7"""
     try:
         data = request.json
         items = data.get('items', [])
@@ -388,39 +388,45 @@ def print_receipt():
         if not items:
             return jsonify({'success': False, 'message': 'Nu exista produse'}), 400
         
+        # Sintaxa din INI determina formatul comenzilor
+        sintaxa = INI_CONFIG.get('sintaxa', '1')
         commands = ['COM1']
         
         for item in items:
-            name = item.get('name', 'Produs')[:28]
+            name = item.get('name', 'Produs')[:38]
             qty = item.get('quantity', 1)
             price = item.get('price', 0)
-            vat = item.get('vat', 'V3')
+            # TVA: 1=Fara, 2=Alte taxe, 3=A(19%), 4=B(9%), 5=C(0%)
+            vat = item.get('vat', '3')
+            um = item.get('um', 'buc')[:5]
             
-            # Format SuccesDrv: R_TRP "Denumire"Cantitate*PretVTVA
-            cmd = f'R_TRP "{name}"{qty}*{price:.2f}{vat}'
+            if sintaxa == '0':
+                # Sintaxa driver vechi (FPDriver style)
+                vat_letter = f'V{vat}' if not str(vat).startswith('V') else vat
+                cmd = f'R_TRP "{name}"{qty}{um}*{price:.2f}{vat_letter}'
+            else:
+                # Sintaxa SuccesM7 - format: 1;denumire;um;cota_tva;pret;cantitate;;grupa;
+                cmd = f'1;{name};{um};{vat};{price:.2f};{qty};;0;'
             commands.append(cmd)
         
         # Plata
         method = payment.get('method', 'cash')
-        if method == 'cash':
-            cash_amount = payment.get('cash_amount', 0)
-            commands.append(f'R_PM1 {cash_amount:.2f}' if cash_amount > 0 else 'R_PM1')
-        elif method == 'card':
-            card_amount = payment.get('card_amount', 0)
-            commands.append(f'R_PM3 {card_amount:.2f}' if card_amount > 0 else 'R_PM3')
-        elif method == 'voucher':
-            voucher_amount = payment.get('voucher_amount', 0)
-            commands.append(f'R_PM4 {voucher_amount:.2f}' if voucher_amount > 0 else 'R_PM4')
-        elif method == 'mixed':
-            cash = payment.get('cash_amount', 0)
-            card = payment.get('card_amount', 0)
-            voucher = payment.get('voucher_amount', 0)
-            if cash > 0:
-                commands.append(f'R_PM1 {cash:.2f}')
-            if card > 0:
-                commands.append(f'R_PM3 {card:.2f}')
-            if voucher > 0:
-                commands.append(f'R_PM4 {voucher:.2f}')
+        if sintaxa == '0':
+            if method == 'cash':
+                commands.append('R_PM1')
+            elif method == 'card':
+                commands.append('R_PM3')
+            elif method == 'voucher':
+                commands.append('R_PM4')
+        else:
+            # SuccesM7: 0; = inchidere bon cu plata default (numerar)
+            # 0;I = factura scurta
+            if method == 'card':
+                commands.append('0;K')  # K = card
+            elif method == 'voucher':
+                commands.append('0;V')  # V = voucher/tichet
+            else:
+                commands.append('0;')  # Default = numerar
         
         result = write_command(commands)
         log_transaction('RECEIPT', data, result)
@@ -433,7 +439,11 @@ def print_receipt():
 @app.route('/fiscal/cancel', methods=['POST'])
 def cancel_receipt():
     """Anuleaza bonul curent"""
-    commands = ['COM1', 'C_VALL']
+    sintaxa = INI_CONFIG.get('sintaxa', '1')
+    if sintaxa == '0':
+        commands = ['COM1', 'C_VALL']
+    else:
+        commands = ['COM1', '60;']  # SuccesM7: anulare bon
     result = write_command(commands)
     log_transaction('CANCEL', {}, result)
     return jsonify(result)
@@ -441,7 +451,11 @@ def cancel_receipt():
 @app.route('/fiscal/report/x', methods=['POST'])
 def report_x():
     """Printeaza Raport X (fara inchidere zi)"""
-    commands = ['COM1', 'C_DYX']
+    sintaxa = INI_CONFIG.get('sintaxa', '1')
+    if sintaxa == '0':
+        commands = ['COM1', 'C_DYX']
+    else:
+        commands = ['COM1', '69;']  # SuccesM7: Raport X
     result = write_command(commands)
     log_transaction('REPORT_X', {}, result)
     return jsonify(result)
@@ -449,7 +463,11 @@ def report_x():
 @app.route('/fiscal/report/z', methods=['POST'])
 def report_z():
     """Printeaza Raport Z (INCHIDE ZIUA FISCALA!)"""
-    commands = ['COM1', 'C_DYZ']
+    sintaxa = INI_CONFIG.get('sintaxa', '1')
+    if sintaxa == '0':
+        commands = ['COM1', 'C_DYZ']
+    else:
+        commands = ['COM1', '70;']  # SuccesM7: Raport Z
     result = write_command(commands)
     log_transaction('REPORT_Z', {}, result)
     return jsonify(result)
@@ -463,7 +481,14 @@ def cash_in():
         if amount <= 0:
             return jsonify({'success': False, 'message': 'Suma trebuie sa fie pozitiva'}), 400
         
-        commands = ['COM1', f'C_CIN {amount:.2f}']
+        sintaxa = INI_CONFIG.get('sintaxa', '1')
+        if sintaxa == '0':
+            commands = ['COM1', f'C_CIN {amount:.2f}']
+        else:
+            # SuccesM7: 25;2;valoare;motiv (2=intrare/sold initial)
+            reason = data.get('reason', 'Intrare numerar')
+            amount_cents = int(amount * 100)
+            commands = ['COM1', f'25;2;{amount_cents};{reason}']
         result = write_command(commands)
         log_transaction('CASH_IN', data, result)
         return jsonify(result)
@@ -479,7 +504,14 @@ def cash_out():
         if amount <= 0:
             return jsonify({'success': False, 'message': 'Suma trebuie sa fie pozitiva'}), 400
         
-        commands = ['COM1', f'C_COUT {amount:.2f}']
+        sintaxa = INI_CONFIG.get('sintaxa', '1')
+        if sintaxa == '0':
+            commands = ['COM1', f'C_COUT {amount:.2f}']
+        else:
+            # SuccesM7: 25;1;valoare;motiv (1=iesire/scoatere)
+            reason = data.get('reason', 'Extragere numerar')
+            amount_cents = int(amount * 100)
+            commands = ['COM1', f'25;1;{amount_cents};{reason}']
         result = write_command(commands)
         log_transaction('CASH_OUT', data, result)
         return jsonify(result)
@@ -489,9 +521,40 @@ def cash_out():
 @app.route('/fiscal/drawer/open', methods=['POST'])
 def open_drawer():
     """Deschide sertarul de bani"""
-    commands = ['COM1', 'C_OD']
+    sintaxa = INI_CONFIG.get('sintaxa', '1')
+    if sintaxa == '0':
+        commands = ['COM1', 'C_OD']
+    else:
+        commands = ['COM1', '106;']  # SuccesM7: deschide sertar
     result = write_command(commands)
     return jsonify(result)
+
+@app.route('/fiscal/totals', methods=['GET'])
+def read_totals():
+    """Citeste totalurile zilnice"""
+    commands = ['COM1', '67;']
+    result = write_command(commands)
+    return jsonify(result)
+
+@app.route('/fiscal/test-command', methods=['POST'])
+def test_command():
+    """Trimite o comanda personalizata (pentru testare)"""
+    try:
+        data = request.json
+        raw_command = data.get('command', '').strip()
+        if not raw_command:
+            return jsonify({'success': False, 'message': 'Comanda goala'}), 400
+        
+        # Adauga COM1 daca nu exista
+        lines = raw_command.split('\\n')
+        if not lines[0].upper().startswith('COM'):
+            lines.insert(0, 'COM1')
+        
+        result = write_command(lines)
+        log_transaction('TEST_COMMAND', {'command': raw_command}, result)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/fiscal/status', methods=['GET'])
 def get_status():
@@ -606,7 +669,7 @@ TEST_PAGE_HTML = """<!DOCTYPE html>
     <div class="header">
         <div>
             <h1>ANDREPAU - Test Casa de Marcat</h1>
-            <div class="sub">Bridge Service v2.0 | INCOTEX Succes M7 via SuccesDrv</div>
+            <div class="sub">Bridge Service v2.0 | INCOTEX Succes M7 via SuccesDrv | Sintaxa: """ + INI_CONFIG.get('sintaxa', '?') + """</div>
         </div>
     </div>
     
@@ -673,6 +736,26 @@ TEST_PAGE_HTML = """<!DOCTYPE html>
                 <div class="btn-grid">
                     <button class="btn btn-green" onclick="testReceipt()">Printeaza Bon Test</button>
                     <button class="btn btn-red" onclick="cancelReceipt()">Anuleaza Bon Curent</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tester Comenzi -->
+        <div class="section" style="border-color: #f59e0b;">
+            <div class="section-title" style="color: #f59e0b;">Tester Comenzi Manual (AVANSAT)</div>
+            <div class="section-body">
+                <p style="color:#888; font-size:13px; margin-bottom:12px;">Trimite orice comanda la SuccesDrv. COM1 se adauga automat pe prima linie. Separati comenzile cu Enter.</p>
+                <div class="input-group">
+                    <label>Comanda:</label>
+                    <input type="text" id="customCmd" placeholder="Ex: 69; sau 106; sau 67;" style="font-size:16px; padding:12px;">
+                </div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+                    <button class="btn btn-orange" onclick="sendCustomCommand()">Trimite Comanda</button>
+                    <button class="btn btn-gray" onclick="document.getElementById('customCmd').value='69;'">69; (Raport X?)</button>
+                    <button class="btn btn-gray" onclick="document.getElementById('customCmd').value='70;'">70; (Raport Z?)</button>
+                    <button class="btn btn-gray" onclick="document.getElementById('customCmd').value='106;'">106; (Sertar)</button>
+                    <button class="btn btn-gray" onclick="document.getElementById('customCmd').value='67;'">67; (Totaluri)</button>
+                    <button class="btn btn-gray" onclick="document.getElementById('customCmd').value='60;'">60; (Anulare?)</button>
                 </div>
             </div>
         </div>
@@ -788,8 +871,8 @@ TEST_PAGE_HTML = """<!DOCTYPE html>
             log('Printare bon fiscal test...');
             const data = await api('POST', '/fiscal/receipt', {
                 items: [
-                    { name: 'Articol Test 1', quantity: 1, price: 1.00, vat: 'V3' },
-                    { name: 'Articol Test 2', quantity: 1, price: 1.00, vat: 'V3' }
+                    { name: 'Articol Test 1', quantity: 1, price: 1.00, vat: '3' },
+                    { name: 'Articol Test 2', quantity: 1, price: 1.00, vat: '3' }
                 ],
                 payment: { method: 'cash', cash_amount: 2.00 }
             });
@@ -802,6 +885,15 @@ TEST_PAGE_HTML = """<!DOCTYPE html>
             log('Anulare bon curent...');
             const data = await api('POST', '/fiscal/cancel');
             log('Anulare: ' + (data.success ? 'SUCCES' : 'EROARE') + ' - ' + (data.message || ''), data.success ? 'ok' : 'err');
+        }
+        
+        async function sendCustomCommand() {
+            const cmd = document.getElementById('customCmd').value.trim();
+            if (!cmd) { log('Introduceti o comanda!', 'err'); return; }
+            log('Trimit comanda: ' + cmd + ' ...');
+            const data = await api('POST', '/fiscal/test-command', { command: cmd });
+            log('Rezultat: ' + (data.success ? 'SUCCES' : 'EROARE') + ' - ' + (data.message || ''), data.success ? 'ok' : 'err');
+            if (data.raw_response) log('Raspuns brut: ' + data.raw_response, 'info');
         }
         
         // Auto health check la incarcare

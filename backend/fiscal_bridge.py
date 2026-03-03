@@ -556,6 +556,42 @@ def test_command():
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
+@app.route('/fiscal/scan-commands', methods=['POST'])
+def scan_commands():
+    """Scaneaza comenzi de la start la end si raporteaza care sunt valide"""
+    try:
+        data = request.json
+        start = data.get('start', 1)
+        end = data.get('end', 200)
+        
+        results = []
+        for cmd_num in range(start, end + 1):
+            cmd = f'{cmd_num};'
+            result = write_command(['COM1', cmd])
+            raw = result.get('raw_response', '') or ''
+            
+            status = 'UNKNOWN'
+            if result.get('success'):
+                status = 'OK_EXECUTED'
+            elif '8007' in raw:
+                status = 'VALID_NEEDS_PARAMS'
+            elif '8006' in raw:
+                status = 'UNKNOWN'
+            else:
+                status = 'OTHER_ERROR'
+            
+            if status != 'UNKNOWN':
+                results.append({
+                    'cmd': cmd_num,
+                    'status': status,
+                    'response': raw[:100]
+                })
+                logger.info(f"SCAN: {cmd_num}; -> {status}")
+        
+        return jsonify({'success': True, 'commands': results})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @app.route('/fiscal/status', methods=['GET'])
 def get_status():
     """Verifica statusul casei de marcat"""
@@ -757,6 +793,16 @@ TEST_PAGE_HTML = """<!DOCTYPE html>
                     <button class="btn btn-gray" onclick="document.getElementById('customCmd').value='67;'">67; (Totaluri)</button>
                     <button class="btn btn-gray" onclick="document.getElementById('customCmd').value='60;'">60; (Anulare?)</button>
                 </div>
+                <div style="margin-top:16px; padding-top:12px; border-top:1px solid #333;">
+                    <p style="color:#f59e0b; font-size:13px; margin-bottom:8px;">SCANNER: Testeaza automat comenzile de la X la Y si afiseaza care sunt valide</p>
+                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                        <label style="color:#888; font-size:13px;">De la:</label>
+                        <input type="number" id="scanStart" value="1" style="width:70px; padding:8px; background:#0d0d0e; border:1px solid #333; border-radius:6px; color:white; font-family:monospace;">
+                        <label style="color:#888; font-size:13px;">Pana la:</label>
+                        <input type="number" id="scanEnd" value="50" style="width:70px; padding:8px; background:#0d0d0e; border:1px solid #333; border-radius:6px; color:white; font-family:monospace;">
+                        <button class="btn btn-blue" onclick="scanCommands()">Scaneaza Comenzi</button>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -894,6 +940,30 @@ TEST_PAGE_HTML = """<!DOCTYPE html>
             const data = await api('POST', '/fiscal/test-command', { command: cmd });
             log('Rezultat: ' + (data.success ? 'SUCCES' : 'EROARE') + ' - ' + (data.message || ''), data.success ? 'ok' : 'err');
             if (data.raw_response) log('Raspuns brut: ' + data.raw_response, 'info');
+        }
+        
+        async function scanCommands() {
+            const start = parseInt(document.getElementById('scanStart').value) || 1;
+            const end = parseInt(document.getElementById('scanEnd').value) || 50;
+            log('=== SCANNER: Testez comenzile ' + start + ' - ' + end + ' ===', 'warn');
+            log('Asteptati... poate dura cateva minute...', 'warn');
+            
+            const data = await api('POST', '/fiscal/scan-commands', { start, end });
+            if (data.success && data.commands) {
+                log('=== REZULTATE SCANNER ===', 'ok');
+                if (data.commands.length === 0) {
+                    log('Nicio comanda valida gasita in intervalul ' + start + '-' + end, 'err');
+                } else {
+                    for (const cmd of data.commands) {
+                        const icon = cmd.status === 'OK_EXECUTED' ? 'EXECUTAT' : 'NECESITA PARAMETRI';
+                        const type = cmd.status === 'OK_EXECUTED' ? 'ok' : 'warn';
+                        log('  Comanda ' + cmd.cmd + ': ' + icon + ' | ' + cmd.response, type);
+                    }
+                }
+                log('=========================', 'ok');
+            } else {
+                log('Eroare scanner: ' + (data.message || 'necunoscuta'), 'err');
+            }
         }
         
         // Auto health check la incarcare

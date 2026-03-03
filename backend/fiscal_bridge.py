@@ -107,9 +107,8 @@ else:
 INI_PATH = os.path.join(SUCCESDRV_PATH, 'SuccesDRV.INI')
 INI_CONFIG = parse_ini_file(INI_PATH)
 
-# Construieste numele fisierelor din INI (Masca_Bon + Extensie_Bon)
-COMMAND_FILENAME = f"{INI_CONFIG['masca_bon']}.{INI_CONFIG['extensie_bon']}"
-ONLINE_FILE = os.path.join(SUCCESDRV_PATH, COMMAND_FILENAME)
+# Construieste numele fisierelor - ONLINE.TXT si ERROR.TXT (standard SuccesDrv)
+ONLINE_FILE = os.path.join(SUCCESDRV_PATH, "ONLINE.TXT")
 ERROR_FILE = os.path.join(SUCCESDRV_PATH, "ERROR.TXT")
 
 BRIDGE_PORT = 5555
@@ -273,7 +272,7 @@ def health_check():
         'driver_path': SUCCESDRV_PATH,
         'driver_exists': path_exists,
         'exe_found': exe_found,
-        'command_file': COMMAND_FILENAME,
+        'command_file': 'ONLINE.TXT',
         'timestamp': datetime.now().isoformat()
     })
 
@@ -364,9 +363,9 @@ def diagnostic():
     
     # 7. Configurare fisiere din INI
     checks.append({
-        'test': 'Fisier comenzi (din INI)',
+        'test': 'Fisier comenzi',
         'ok': True,
-        'note': f'{COMMAND_FILENAME} (Masca={INI_CONFIG["masca_bon"]}, Ext={INI_CONFIG["extensie_bon"]})'
+        'note': f'ONLINE.TXT (citit din INI: Masca={INI_CONFIG["masca_bon"]})'
     })
     
     all_ok = all(c['ok'] for c in checks[:4])
@@ -828,8 +827,8 @@ if __name__ == '__main__':
     print("=" * 62)
     print(f"  Cale SuccesDrv: {SUCCESDRV_PATH}")
     print(f"  Folder exista:  {os.path.isdir(SUCCESDRV_PATH)}")
-    print(f"  Fisier comenzi: {COMMAND_FILENAME}")
-    print(f"  INI config:     Masca={INI_CONFIG['masca_bon']}, Ext={INI_CONFIG['extensie_bon']}")
+    print(f"  Fisier comenzi: ONLINE.TXT")
+    print(f"  Port COM:       {INI_CONFIG['port']}")
     print(f"  Port:           {BRIDGE_PORT}")
     print("-" * 62)
     print(f"  PAGINA TEST:    http://localhost:{BRIDGE_PORT}/test")

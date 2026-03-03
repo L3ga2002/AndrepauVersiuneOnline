@@ -388,45 +388,38 @@ def print_receipt():
         if not items:
             return jsonify({'success': False, 'message': 'Nu exista produse'}), 400
         
-        # Sintaxa din INI determina formatul comenzilor
-        sintaxa = INI_CONFIG.get('sintaxa', '1')
         commands = ['COM1']
         
         for item in items:
             name = item.get('name', 'Produs')[:38]
             qty = item.get('quantity', 1)
             price = item.get('price', 0)
-            # TVA: 1=Fara, 2=Alte taxe, 3=A(19%), 4=B(9%), 5=C(0%)
+            # Cota TVA: 1=Fara, 2=Alte taxe, 3=A(19%), 4=B(9%), 5=C(0%)
             vat = item.get('vat', '3')
             um = item.get('um', 'buc')[:5]
             
-            if sintaxa == '0':
-                # Sintaxa driver vechi (FPDriver style)
-                vat_letter = f'V{vat}' if not str(vat).startswith('V') else vat
-                cmd = f'R_TRP "{name}"{qty}{um}*{price:.2f}{vat_letter}'
-            else:
-                # Sintaxa SuccesM7 - format: 1;denumire;um;cota_tva;pret;cantitate;;grupa;
-                cmd = f'1;{name};{um};{vat};{price:.2f};{qty};;0;'
+            # SuccesM7: 1;denumire;um;cota_tva;pret;cantitate;;grupa;
+            cmd = f'1;{name};{um};{vat};{price:.2f};{qty};;0;'
             commands.append(cmd)
         
-        # Plata
+        # Plata - comanda 3;forma_plata;suma
+        # Forme plata: 1=Numerar, 2=Card, 3=Tichet, 4=Credit
         method = payment.get('method', 'cash')
-        if sintaxa == '0':
-            if method == 'cash':
-                commands.append('R_PM1')
-            elif method == 'card':
-                commands.append('R_PM3')
-            elif method == 'voucher':
-                commands.append('R_PM4')
+        total = payment.get('total', 0)
+        if method == 'card':
+            commands.append(f'3;2;{total:.2f}')
+        elif method == 'voucher':
+            commands.append(f'3;3;{total:.2f}')
+        elif method == 'mixed':
+            cash = payment.get('cash_amount', 0)
+            card = payment.get('card_amount', 0)
+            if cash > 0:
+                commands.append(f'3;1;{cash:.2f}')
+            if card > 0:
+                commands.append(f'3;2;{card:.2f}')
         else:
-            # SuccesM7: 0; = inchidere bon cu plata default (numerar)
-            # 0;I = factura scurta
-            if method == 'card':
-                commands.append('0;K')  # K = card
-            elif method == 'voucher':
-                commands.append('0;V')  # V = voucher/tichet
-            else:
-                commands.append('0;')  # Default = numerar
+            # Numerar
+            commands.append(f'3;1;{total:.2f}')
         
         result = write_command(commands)
         log_transaction('RECEIPT', data, result)
@@ -439,11 +432,7 @@ def print_receipt():
 @app.route('/fiscal/cancel', methods=['POST'])
 def cancel_receipt():
     """Anuleaza bonul curent"""
-    sintaxa = INI_CONFIG.get('sintaxa', '1')
-    if sintaxa == '0':
-        commands = ['COM1', 'C_VALL']
-    else:
-        commands = ['COM1', '60;']  # SuccesM7: anulare bon
+    commands = ['COM1', '60;']
     result = write_command(commands)
     log_transaction('CANCEL', {}, result)
     return jsonify(result)
@@ -451,11 +440,7 @@ def cancel_receipt():
 @app.route('/fiscal/report/x', methods=['POST'])
 def report_x():
     """Printeaza Raport X (fara inchidere zi)"""
-    sintaxa = INI_CONFIG.get('sintaxa', '1')
-    if sintaxa == '0':
-        commands = ['COM1', 'C_DYX']
-    else:
-        commands = ['COM1', '69;']  # SuccesM7: Raport X
+    commands = ['COM1', '30;']
     result = write_command(commands)
     log_transaction('REPORT_X', {}, result)
     return jsonify(result)
@@ -463,11 +448,7 @@ def report_x():
 @app.route('/fiscal/report/z', methods=['POST'])
 def report_z():
     """Printeaza Raport Z (INCHIDE ZIUA FISCALA!)"""
-    sintaxa = INI_CONFIG.get('sintaxa', '1')
-    if sintaxa == '0':
-        commands = ['COM1', 'C_DYZ']
-    else:
-        commands = ['COM1', '70;']  # SuccesM7: Raport Z
+    commands = ['COM1', '15;']
     result = write_command(commands)
     log_transaction('REPORT_Z', {}, result)
     return jsonify(result)
@@ -481,14 +462,9 @@ def cash_in():
         if amount <= 0:
             return jsonify({'success': False, 'message': 'Suma trebuie sa fie pozitiva'}), 400
         
-        sintaxa = INI_CONFIG.get('sintaxa', '1')
-        if sintaxa == '0':
-            commands = ['COM1', f'C_CIN {amount:.2f}']
-        else:
-            # SuccesM7: 25;2;valoare;motiv (2=intrare/sold initial)
-            reason = data.get('reason', 'Intrare numerar')
-            amount_cents = int(amount * 100)
-            commands = ['COM1', f'25;2;{amount_cents};{reason}']
+        reason = data.get('reason', 'Intrare numerar')
+        # SuccesM7: 25;2;valoare;motiv (2=intrare/sold initial)
+        commands = ['COM1', f'25;2;{amount:.2f};{reason}']
         result = write_command(commands)
         log_transaction('CASH_IN', data, result)
         return jsonify(result)
@@ -504,14 +480,9 @@ def cash_out():
         if amount <= 0:
             return jsonify({'success': False, 'message': 'Suma trebuie sa fie pozitiva'}), 400
         
-        sintaxa = INI_CONFIG.get('sintaxa', '1')
-        if sintaxa == '0':
-            commands = ['COM1', f'C_COUT {amount:.2f}']
-        else:
-            # SuccesM7: 25;1;valoare;motiv (1=iesire/scoatere)
-            reason = data.get('reason', 'Extragere numerar')
-            amount_cents = int(amount * 100)
-            commands = ['COM1', f'25;1;{amount_cents};{reason}']
+        reason = data.get('reason', 'Extragere numerar')
+        # SuccesM7: 25;1;valoare;motiv (1=iesire/scoatere)
+        commands = ['COM1', f'25;1;{amount:.2f};{reason}']
         result = write_command(commands)
         log_transaction('CASH_OUT', data, result)
         return jsonify(result)
@@ -521,11 +492,7 @@ def cash_out():
 @app.route('/fiscal/drawer/open', methods=['POST'])
 def open_drawer():
     """Deschide sertarul de bani"""
-    sintaxa = INI_CONFIG.get('sintaxa', '1')
-    if sintaxa == '0':
-        commands = ['COM1', 'C_OD']
-    else:
-        commands = ['COM1', '106;']  # SuccesM7: deschide sertar
+    commands = ['COM1', '106;']
     result = write_command(commands)
     return jsonify(result)
 

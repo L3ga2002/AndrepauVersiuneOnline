@@ -391,9 +391,6 @@ def print_receipt():
         
         commands = ['COM1']
         
-        # Deschidere bon fiscal
-        commands.append('2;1;')
-        
         # Client/CUI pe bon (la inceput, inainte de articole)
         if client and client.get('cui'):
             cui = client.get('cui', '')
@@ -478,7 +475,8 @@ def cash_in():
         
         reason = data.get('reason', 'Intrare numerar')
         # SuccesM7: 25;2;valoare
-        commands = ['COM1', f'25;2;{amount:.2f}']
+        amount_str = f'{amount:.2f}'.replace('.', ',')
+        commands = ['COM1', f'25;2;{amount_str}']
         result = write_command(commands)
         log_transaction('CASH_IN', data, result)
         return jsonify(result)
@@ -496,7 +494,8 @@ def cash_out():
         
         reason = data.get('reason', 'Extragere numerar')
         # SuccesM7: 25;1;valoare
-        commands = ['COM1', f'25;1;{amount:.2f}']
+        amount_str = f'{amount:.2f}'.replace('.', ',')
+        commands = ['COM1', f'25;1;{amount_str}']
         result = write_command(commands)
         log_transaction('CASH_OUT', data, result)
         return jsonify(result)

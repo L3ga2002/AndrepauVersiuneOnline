@@ -384,11 +384,19 @@ def print_receipt():
         data = request.json
         items = data.get('items', [])
         payment = data.get('payment', {})
+        client = data.get('client', None)
         
         if not items:
             return jsonify({'success': False, 'message': 'Nu exista produse'}), 400
         
         commands = ['COM1']
+        
+        # Client/CUI pe bon (la inceput, inainte de articole)
+        if client and client.get('cui'):
+            cui = client.get('cui', '')
+            nume = client.get('nume', '')[:38]
+            adresa = client.get('adresa', '')[:38]
+            commands.append(f'40;{nume};{cui};{adresa}')
         
         for item in items:
             name = item.get('name', 'Produs')[:38]
@@ -413,10 +421,13 @@ def print_receipt():
         elif method == 'mixed':
             cash = payment.get('cash_amount', 0)
             card = payment.get('card_amount', 0)
+            voucher = payment.get('voucher_amount', 0)
             if cash > 0:
                 commands.append(f'3;1;{cash:.2f}')
             if card > 0:
                 commands.append(f'3;2;{card:.2f}')
+            if voucher > 0:
+                commands.append(f'3;3;{voucher:.2f}')
         else:
             # Numerar
             commands.append(f'3;1;{total:.2f}')
@@ -737,7 +748,8 @@ TEST_PAGE_HTML = """<!DOCTYPE html>
             <div class="section-body">
                 <p style="color:#888; font-size:13px; margin-bottom:12px;">Printeaza un bon fiscal de test cu 2 articole (1 RON fiecare, plata numerar)</p>
                 <div class="btn-grid">
-                    <button class="btn btn-green" onclick="testReceipt()">Printeaza Bon Test</button>
+                    <button class="btn btn-green" onclick="testReceipt()">Bon Fiscal Normal</button>
+                    <button class="btn btn-blue" onclick="testReceiptCUI()">Bon Fiscal cu CUI</button>
                     <button class="btn btn-red" onclick="cancelReceipt()">Anuleaza Bon Curent</button>
                 </div>
             </div>
@@ -881,16 +893,29 @@ TEST_PAGE_HTML = """<!DOCTYPE html>
         }
         
         async function testReceipt() {
-            log('Printare bon fiscal test...');
+            log('Printare bon fiscal test (2 articole x 1 RON, numerar)...');
             const data = await api('POST', '/fiscal/receipt', {
                 items: [
-                    { name: 'Articol Test 1', quantity: 1, price: 1.00, vat: '3' },
-                    { name: 'Articol Test 2', quantity: 1, price: 1.00, vat: '3' }
+                    { name: 'Articol Test 1', quantity: 1, price: 1.00, vat: '3', um: 'buc' },
+                    { name: 'Articol Test 2', quantity: 1, price: 1.00, vat: '3', um: 'buc' }
                 ],
-                payment: { method: 'cash', cash_amount: 2.00 }
+                payment: { method: 'cash', total: 2.00 }
             });
             log('Bon: ' + (data.success ? 'PRINTAT' : 'EROARE') + ' - ' + (data.message || ''), data.success ? 'ok' : 'err');
             if (data.fiscal_number) log('Nr. fiscal: ' + data.fiscal_number, 'ok');
+            if (data.raw_response) log('Raspuns brut: ' + data.raw_response, 'info');
+        }
+        
+        async function testReceiptCUI() {
+            log('Printare bon fiscal cu CUI (test)...');
+            const data = await api('POST', '/fiscal/receipt', {
+                client: { cui: 'RO4381714', nume: 'FIRMA TEST SRL', adresa: 'Bucuresti' },
+                items: [
+                    { name: 'Articol Test CUI', quantity: 1, price: 1.00, vat: '3', um: 'buc' }
+                ],
+                payment: { method: 'cash', total: 1.00 }
+            });
+            log('Bon CUI: ' + (data.success ? 'PRINTAT' : 'EROARE') + ' - ' + (data.message || ''), data.success ? 'ok' : 'err');
             if (data.raw_response) log('Raspuns brut: ' + data.raw_response, 'info');
         }
         

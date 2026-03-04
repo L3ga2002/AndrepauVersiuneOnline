@@ -407,7 +407,7 @@ def print_receipt():
             um = item.get('um', 'buc')[:5]
             
             # SuccesM7: 1;denumire;um;cota_tva;pret;cantitate;;grupa;
-            cmd = f'1;{name};{um};{vat};{price:.2f};{qty};;0;'
+            cmd = f'1;{name};{um};{vat};{price:.2f};{qty};;1;'
             commands.append(cmd)
         
         # Plata - comanda 3;forma_plata;suma
@@ -443,7 +443,7 @@ def print_receipt():
 @app.route('/fiscal/cancel', methods=['POST'])
 def cancel_receipt():
     """Anuleaza bonul curent"""
-    commands = ['COM1', '60;']
+    commands = ['COM1', '60;1;']
     result = write_command(commands)
     log_transaction('CANCEL', {}, result)
     return jsonify(result)
@@ -474,8 +474,8 @@ def cash_in():
             return jsonify({'success': False, 'message': 'Suma trebuie sa fie pozitiva'}), 400
         
         reason = data.get('reason', 'Intrare numerar')
-        # SuccesM7: 25;2;valoare;motiv (2=intrare/sold initial)
-        commands = ['COM1', f'25;2;{amount:.2f};{reason}']
+        # SuccesM7: 25;2;valoare;
+        commands = ['COM1', f'25;2;{amount:.2f};']
         result = write_command(commands)
         log_transaction('CASH_IN', data, result)
         return jsonify(result)
@@ -492,8 +492,8 @@ def cash_out():
             return jsonify({'success': False, 'message': 'Suma trebuie sa fie pozitiva'}), 400
         
         reason = data.get('reason', 'Extragere numerar')
-        # SuccesM7: 25;1;valoare;motiv (1=iesire/scoatere)
-        commands = ['COM1', f'25;1;{amount:.2f};{reason}']
+        # SuccesM7: 25;1;valoare;
+        commands = ['COM1', f'25;1;{amount:.2f};']
         result = write_command(commands)
         log_transaction('CASH_OUT', data, result)
         return jsonify(result)

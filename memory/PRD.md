@@ -1,164 +1,99 @@
 # ANDREPAU POS - Product Requirements Document
 
-## Problem Statement
-Create a store management + POS application for a construction materials and tools shop called ANDREPAU.
-- Romanian language interface
-- Optimized for Windows desktop + tablet (touchscreen)
-- Fast selling in physical store + stock management
+## Descriere Proiect
+Aplicatie completa de gestiune magazin si POS (Point of Sale) pentru magazinul de materiale de constructii **ANDREPAU**. Aplicatie in limba romana, optimizata pentru Windows desktop si tablete.
 
-## User Personas
-1. **Administrator** - Full access to all features (products, suppliers, reports, settings, users)
-2. **Casier** - Limited to POS selling, products view, stock view, and reports
+## Arhitectura
+- **Frontend**: React + Tailwind CSS + Shadcn UI (PWA)
+- **Backend**: FastAPI + Python + MongoDB
+- **Bridge Fiscal Local**: Python/Flask (ruleaza pe PC-ul din magazin)
+- **Comunicare Hardware**: SuccesDrv → ONLINE.TXT/ERROR.TXT → INCOTEX Succes M7
 
-## Core Requirements
+## Credentiale
+- Admin: `admin` / `admin123`
+- Casier: `casier` / `casier123`
 
-### 1. POS / Casa de Marcat
-- Fast selling screen with product search
-- Barcode scanner support
-- Category filtering
-- Cart with quantity selector
-- Manual price edit for bulk products
-- Live total calculation
-- Payment: Numerar, Card, Tichete de masa, Combinata (Numerar+Card+Tichete)
-- Discount percentage
-- Receipt generation
-- Automatic stock decrease
-- Hold/Pending orders (salvare cos) - Buton "ASTEAPTA" + vizualizare comenzi in asteptare
-- Simplified invoice generation with ANAF CUI search for auto-fill company data
+## Ce s-a implementat
 
-### 2. Product Management
-- CRUD operations for products
-- Fields: Nume, Categorie, Furnizor, Cod bare, Pret achizitie (optional), Pret vanzare, TVA, Unitate masura, Stoc, Stoc minim, Descriere
-- Units: buc, sac, kg, metru, litru, rola
-- Fractional quantities support
-- Scan-to-Add: scanning unknown barcode prompts to add new product
+### Complet (Functional)
+1. **Sistem de autentificare** - JWT, roluri admin/casier
+2. **Gestiune produse** - CRUD complet, import Excel, categorii, cod bare
+3. **Pagina POS** - Vanzare cu cos, cautare produse, categorii, discount, hold orders, factura cu CUI
+4. **Integrare Bridge Fiscal** - POS-ul comunica cu bridge-ul local pentru a printa bonul fiscal INAINTE de a salva vanzarea
+5. **Operatiuni Casa** - Pagina dedicata: Raport X/Z, Intrare/Iesire numerar, Deschide sertar, Istoric, Status bridge
+6. **Bridge Service v3.0** (`fiscal_bridge.py`) - Complet rescris cu formatul corect din Manual SuccesDRV 8.5 (2023):
+   - Comenzi: 0 (deschidere bon), 1 (articol), 5 (plata), 14 (anulare), 15 (Raport Z), 25 (numerar in/out), 30 (Raport X), 40 (info client), 46 (copie bon), 67 (totaluri), 106 (sertar)
+   - Preturi in BANI (x100), Cantitati cu punct zecimal
+   - CARD fara suma (5;;2;1;0), trebuie sa fie ULTIMA forma de plata
+   - Pagina de test la http://localhost:5555/test
+7. **Descărcare Bridge ZIP** - Endpoint /api/bridge/download (fiscal_bridge.py + .bat scripts)
+8. **Stoc & Inventar** - Dashboard, alerte stoc scazut, export Excel
+9. **Rapoarte** - Vanzari pe zi/luna, top produse
+10. **Furnizori** - CRUD complet
+11. **Cautare CUI (ANAF)** - Cache local cu 3.7M firme romanesti
+12. **NIR (Nota Intrare Receptie)** - Receptie marfa
 
-### 3. Stock / Inventar
-- Dashboard: total produse, valoare stoc, stoc scazut, fara stoc
-- Low stock alerts
-- NIR (Nota de Intrare Receptie) module
+### Format Comenzi Fiscale (INCOTEX Succes M7 via SuccesDRV 8.5)
+```
+Command 0:  0;NrOperator;Parola;1[;I]           Deschidere bon
+Command 1:  1;Denumire;UM;CotaTVA;Pret_bani;Cantitate  Articol
+Command 5:  5;Suma_bani;FormaPl;1;0             Plata (CARD: 5;;2;1;0)
+Command 14: 14                                   Anulare (fara ;)
+Command 15: 15                                   Raport Z (fara ;)
+Command 25: 25;T;Valoare_bani;Motiv;NrOp        Cash In(T=2)/Out(T=1)
+Command 30: 30                                   Raport X (fara ;)
+Command 40: 40;Nume;CodFiscal;Adresa            Info client (inainte de cmd 0)
+```
 
-### 4. Reports
-- Sales today/week/month/year
-- Profit calculation (admin only)
-- Top 10 products sold
-- Top categories
-- Sales history (bonuri)
-- Export CSV
+## Taskuri Viitoare
 
-### 5. Suppliers
-- CRUD operations
-- Fields: Nume firma, Telefon, Email, Adresa
+### P2: Deducere Atomica Stoc
+- Stocul se deduce DOAR dupa confirmarea tiparirii bonului fiscal
+- Flux anulare cu restaurarea stocului
 
-### 6. User Roles
-- Admin: full access
-- Casier: POS only + view access
+### P3: Fix badge "100" alerta stoc
+- Badge "100 produse cu stoc scazut" in sidebar
 
-### 7. Settings
-- User management (admin only)
-- Database backup/export JSON
-- Export produse Excel (.xlsx)
+### P4: Alerte Stoc Minim
+- Sistem robust de notificari pentru produse sub pragul minim
 
-### 8. Cash Register Integration (INCOTEX Succes M7)
-- Bridge service (fiscal_bridge.py) for file-based communication with SuccesDrv
-- Commands via ONLINE.TXT, responses via ERROR.TXT
-- Operations: Receipt printing, Report X, Report Z, Cash In/Out, Open Drawer
-- Built-in test page at http://localhost:5555/test
-- Auto-detection of SuccesDrv path
-- Windows batch scripts for easy install/start
+### P5: Prevenire Vanzari Duplicate
+- ID tranzactie unic in fluxul de vanzare
 
-## What's Been Implemented
+### P6: Logare Profesionala
+- Log detaliat pentru operatiuni fiscale, POS, stoc, erori
 
-### Date: 02.03.2026
-- Fiscal Bridge Service v2.0 - production-ready with:
-  - File-based communication (ONLINE.TXT / ERROR.TXT)
-  - Built-in HTML test page at /test
-  - Diagnostic endpoint at /diagnostic
-  - Auto-detection of SuccesDrv folder path
-  - Windows installer (install_bridge.bat) and starter (start_bridge.bat)
-  - All fiscal endpoints: receipt, cancel, report X/Z, cash in/out, drawer
-- Cash Operations Page (Operatiuni Casa) - fully functional:
-  - Bridge connection status indicator with auto-refresh
-  - Daily stats (Sold Casa, Incasari Cash/Card, Bonuri)
-  - Report X, Report Z (with confirmation), Cash In/Out, Open Drawer, History
-  - Configurable bridge URL (saved in localStorage)
-  - Clear instructions when bridge is disconnected
-- Backend improvements:
-  - transaction_id for duplicate sale prevention
-  - fiscal_number and fiscal_status on sales
-  - Sale cancellation with stock restore (/api/sales/{id}/cancel)
-  - Fiscal settings endpoint (/api/settings/fiscal)
-- Testing: 100% pass rate (34/34 backend, all frontend)
+### P7: Import NIR din PDF
+- Parsare facturi furnizori din PDF
 
-### Date: 18.02.2026
-- Fixed critical Select component bug
-- Added Excel export functionality
-- Removed "Made with Emergent" badge
-- Added Hold Orders feature
-- Added Combined Payment
-- Added Invoice with ANAF Search
-- IMPORTED 3,774,060 COMPANIES from ONRC
+### P8: Integrare Verifone V200c
+- Terminal POS card (blocat pana la obtinerea documentatiei ECR)
 
-### Date: 17.02.2026
-- Full backend API with FastAPI + MongoDB
-- React frontend with Shadcn/UI components
-- JWT authentication
-- Industrial Dark Mode theme (orange accents)
-- PWA conversion
-- 5,697 products imported from Excel
+## Structura Fisiere Cheie
+```
+/app/backend/
+  server.py              - API principal FastAPI
+  fiscal_bridge.py       - Bridge local (v3.0) pentru casa de marcat
+  install_bridge.bat     - Script instalare
+  start_bridge.bat       - Script pornire
+/app/frontend/src/
+  pages/POSPage.js       - Pagina POS cu integrare bridge
+  pages/CashOperationsPage.js - Operatiuni casa
+  pages/ProductsPage.js  - Gestiune produse
+  pages/StockPage.js     - Stoc & Inventar
+  pages/ReportsPage.js   - Rapoarte
+  components/Layout.js   - Layout cu sidebar si alerte stoc
+```
 
-## Tech Stack
-- Backend: FastAPI, MongoDB, Motor, PyJWT, bcrypt, openpyxl
-- Frontend: React 19, Tailwind CSS, Shadcn/UI, Recharts
-- Bridge: Flask + flask-cors (Python, runs locally on store PC)
-- Fonts: Barlow Condensed (headings), Inter (body), JetBrains Mono (prices)
-- PWA: Service Worker, Manifest
+## API Endpoints Principale
+- `POST /api/auth/login` - Autentificare
+- `GET/POST /api/products` - Produse CRUD
+- `POST /api/sales` - Creare vanzare (cu fiscal_number, fiscal_status)
+- `POST /api/cash-operations` - Inregistrare operatiuni casa
+- `GET /api/cash-operations/daily-stats` - Statistici zilnice
+- `GET /api/bridge/download` - Descarca ZIP bridge service
+- `POST /api/anaf/search-cui` - Cautare firma
 
-## Architecture
-- Cloud: React PWA + FastAPI backend + MongoDB
-- Local (store PC): fiscal_bridge.py (Flask) communicates with SuccesDrv via file I/O
-- PWA calls bridge at http://localhost:5555 (Chrome allows HTTPS->localhost)
-
-## Prioritized Backlog
-
-### P0 - DONE
-- [x] POS selling flow
-- [x] Product management
-- [x] Authentication
-- [x] Select component bug fix
-- [x] Cash register integration (bridge service)
-- [x] Cash operations page
-
-### P1 - DONE
-- [x] Stock dashboard
-- [x] NIR module
-- [x] Reports
-- [x] Supplier management
-- [x] Excel export
-- [x] PWA conversion
-- [x] Mass data import
-
-### P2 - TODO
-- [ ] Integrate POS payment flow with fiscal bridge (print receipt before stock deduction)
-- [ ] Fix "100" text appearing in sidebar (stock alerts badge)
-- [ ] Minimum stock alerts page with notifications
-- [ ] Professional logging for all operations
-
-### P3 - Future
-- [ ] NIR from PDF import (parse supplier invoices)
-- [ ] Verifone V200c bank POS terminal integration
-- [ ] Multiple price lists
-- [ ] Customer loyalty program
-- [ ] Barcode label printing
-
-## Key Files
-- /app/backend/server.py - Main FastAPI backend
-- /app/backend/fiscal_bridge.py - Local bridge service for cash register
-- /app/backend/install_bridge.bat - Windows installer
-- /app/backend/start_bridge.bat - Windows starter
-- /app/frontend/src/pages/CashOperationsPage.js - Cash operations UI
-- /app/frontend/src/pages/POSPage.js - POS selling UI
-
-## Credentials
-- **Admin**: admin / admin123
-- **Casier**: casier / casier123
+## Integrari
+- **INCOTEX Succes M7**: IN PROGRESS (bridge complet, testare hardware necesara)
+- **Verifone V200c**: NOT STARTED (asteptam documentatie ECR)

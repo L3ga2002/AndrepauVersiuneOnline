@@ -5,7 +5,7 @@ import { Input } from '../components/ui/input';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { formatCurrency, formatNumber } from '../lib/utils';
-import { Search, Barcode, X, Plus, Minus, Trash2, CreditCard, Banknote, Percent, Receipt, PauseCircle, FileText, Ticket, Clock, Loader2, CheckCircle, Building2, Split, Database } from 'lucide-react';
+import { Search, Barcode, X, Plus, Minus, Trash2, CreditCard, Banknote, Percent, Receipt, PauseCircle, FileText, Ticket, Clock, Loader2, CheckCircle, Building2, Split, Database, Wifi, WifiOff, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function POSPage() {
@@ -46,7 +46,76 @@ export default function POSPage() {
   const [invoiceData, setInvoiceData] = useState({ firma: '', cui: '', adresa: '', nr_reg_com: '', platitor_tva: false });
   const [searchingCUI, setSearchingCUI] = useState(false);
   
+  // Fiscal bridge state
+  const [bridgeConnected, setBridgeConnected] = useState(false);
+  const [fiscalLoading, setFiscalLoading] = useState(false);
+  const [showNoBridgeConfirm, setShowNoBridgeConfirm] = useState(false);
+  const [pendingPaymentMethod, setPendingPaymentMethod] = useState(null);
+  
+  const BRIDGE_URL = localStorage.getItem('andrepau_bridge_url') || 'http://localhost:5555';
+
   const searchRef = useRef(null);
+
+  // Check bridge connection
+  const checkBridge = useCallback(async () => {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2000);
+      const resp = await fetch(`${BRIDGE_URL}/health`, { signal: controller.signal });
+      clearTimeout(timeout);
+      setBridgeConnected(resp.ok);
+    } catch {
+      setBridgeConnected(false);
+    }
+  }, [BRIDGE_URL]);
+
+  useEffect(() => {
+    checkBridge();
+    const interval = setInterval(checkBridge, 15000);
+    return () => clearInterval(interval);
+  }, [checkBridge]);
+
+  // Call bridge endpoint
+  const callBridge = async (endpoint, method = 'POST', body = null) => {
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
+    const resp = await fetch(`${BRIDGE_URL}${endpoint}`, opts);
+    return resp.json();
+  };
+
+  // Print fiscal receipt via bridge
+  const printFiscalReceipt = async (paymentMethod, cashAmt, cardAmt, ticketAmt, clientInfo = null) => {
+    const items = cart.map(item => ({
+      name: String(item.nume || 'Produs').substring(0, 38),
+      quantity: item.cantitate,
+      price: item.pret_unitar,
+      vat: item.tva || 19,
+      um: item.unitate || 'buc'
+    }));
+
+    let payment = { total };
+    if (paymentMethod === 'card') {
+      payment.method = 'card';
+    } else if (paymentMethod === 'combinat' || paymentMethod === 'tichete') {
+      payment.method = 'mixed';
+      payment.cash_amount = cashAmt || 0;
+      payment.card_amount = cardAmt || 0;
+      payment.voucher_amount = ticketAmt || 0;
+    } else {
+      payment.method = 'cash';
+    }
+
+    const body = { items, payment };
+    if (clientInfo && clientInfo.cui) {
+      body.client = {
+        cui: clientInfo.cui,
+        nume: clientInfo.nume || '',
+        adresa: clientInfo.adresa || ''
+      };
+    }
+
+    return callBridge('/fiscal/receipt', 'POST', body);
+  };
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -266,7 +335,38 @@ export default function POSPage() {
       }
     }
 
+    // Check bridge and print fiscal receipt first
+    if (!bridgeConnected) {
+      setPendingPaymentMethod(method);
+      setShowNoBridgeConfirm(true);
+      return;
+    }
+
+    await processSaleWithFiscal(method, sumaCash, sumaCard, sumaTichete);
+  };
+
+  const processSaleWithFiscal = async (method, sumaCash, sumaCard, sumaTichete, skipFiscal = false) => {
+    setFiscalLoading(true);
     try {
+      // Step 1: Print fiscal receipt (if bridge connected)
+      let fiscalResult = null;
+      if (!skipFiscal && bridgeConnected) {
+        try {
+          fiscalResult = await printFiscalReceipt(method, sumaCash, sumaCard, sumaTichete);
+          if (!fiscalResult.success) {
+            toast.error(`Eroare casa de marcat: ${fiscalResult.message}`);
+            setFiscalLoading(false);
+            return;
+          }
+          toast.success('Bon fiscal printat!');
+        } catch (err) {
+          toast.error('Nu se poate comunica cu casa de marcat');
+          setFiscalLoading(false);
+          return;
+        }
+      }
+
+      // Step 2: Save sale to backend (only after successful fiscal print or skip)
       const saleData = {
         items: cart.map(item => ({
           product_id: item.product_id,
@@ -282,7 +382,9 @@ export default function POSPage() {
         metoda_plata: method,
         suma_numerar: sumaCash,
         suma_card: sumaCard + sumaTichete,
-        casier_id: user.id
+        casier_id: user.id,
+        fiscal_number: fiscalResult?.fiscal_number || null,
+        fiscal_status: (!skipFiscal && fiscalResult?.success) ? 'printed' : 'none'
       };
 
       const response = await fetch(`${API_URL}/sales`, {
@@ -297,7 +399,7 @@ export default function POSPage() {
       if (response.ok) {
         const sale = await response.json();
         setLastSale(sale);
-        setShowPayment(false);
+        setShowCombinedPayment(false);
         setShowReceipt(true);
         clearCart();
         fetchProducts();
@@ -309,6 +411,8 @@ export default function POSPage() {
     } catch (error) {
       console.error('Payment error:', error);
       toast.error('Eroare la procesarea plății');
+    } finally {
+      setFiscalLoading(false);
     }
   };
 
@@ -431,52 +535,13 @@ export default function POSPage() {
       return;
     }
     
-    try {
-      const saleData = {
-        items: cart.map(item => ({
-          product_id: item.product_id,
-          nume: item.nume,
-          cantitate: item.cantitate,
-          pret_unitar: item.pret_unitar,
-          tva: item.tva
-        })),
-        subtotal: subtotal,
-        tva_total: tvaTotal,
-        total: total,
-        discount_percent: discount,
-        metoda_plata: 'combinat',
-        suma_numerar: cash,
-        suma_card: card + tickets,
-        casier_id: user.id
-      };
-
-      const response = await fetch(`${API_URL}/sales`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(saleData)
-      });
-
-      if (response.ok) {
-        const sale = await response.json();
-        setLastSale(sale);
-        setShowCombinedPayment(false);
-        setShowReceipt(true);
-        clearCart();
-        fetchProducts();
-        setCashAmount('');
-        setCardAmount('');
-        setTicketAmount('');
-        toast.success('Vânzare finalizată cu succes');
-      } else {
-        const error = await response.json();
-        toast.error(error.detail || 'Eroare la procesarea vânzării');
-      }
-    } catch (error) {
-      toast.error('Eroare la procesarea plății');
+    if (!bridgeConnected) {
+      setPendingPaymentMethod('combinat');
+      setShowNoBridgeConfirm(true);
+      return;
     }
+    
+    await processSaleWithFiscal('combinat', cash, card, tickets);
   };
 
   // Generate simplified invoice
@@ -486,11 +551,31 @@ export default function POSPage() {
       return;
     }
     
-    // Process as regular sale but mark as invoice
-    await handlePayment('numerar');
+    setFiscalLoading(true);
+    try {
+      // Print fiscal receipt with CUI info
+      if (bridgeConnected) {
+        const fiscalResult = await printFiscalReceipt('numerar', total, 0, 0, {
+          cui: invoiceData.platitor_tva ? `RO${invoiceData.cui.replace(/^RO/i, '')}` : invoiceData.cui,
+          nume: invoiceData.firma,
+          adresa: invoiceData.adresa
+        });
+        if (!fiscalResult.success) {
+          toast.error(`Eroare casa de marcat: ${fiscalResult.message}`);
+          setFiscalLoading(false);
+          return;
+        }
+        toast.success('Factură fiscală printată!');
+      }
+      
+      await processSaleWithFiscal('numerar', total, 0, 0, !bridgeConnected);
+    } catch {
+      toast.error('Eroare la generarea facturii');
+    } finally {
+      setFiscalLoading(false);
+    }
     setShowInvoice(false);
     setInvoiceData({ firma: '', cui: '', adresa: '', nr_reg_com: '', platitor_tva: false });
-    toast.success('Factură simplificată generată');
   };
 
   return (
@@ -724,22 +809,35 @@ export default function POSPage() {
             </Button>
           </div>
 
+          {/* Bridge Status Indicator */}
+          <div 
+            className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium ${
+              bridgeConnected ? 'bg-green-500/15 text-green-500 border border-green-500/30' : 'bg-red-500/15 text-red-500 border border-red-500/30'
+            }`}
+            data-testid="pos-bridge-status"
+          >
+            {bridgeConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+            {bridgeConnected ? 'Casa conectata' : 'Casa deconectata'}
+          </div>
+
           {/* Payment Buttons - Big like ForIT */}
           <div className="grid grid-cols-2 gap-2">
             <Button
               onClick={() => handlePayment('numerar')}
-              disabled={cart.length === 0}
+              disabled={cart.length === 0 || fiscalLoading}
               className="h-14 text-lg font-bold bg-green-600 hover:bg-green-700 text-white"
+              data-testid="pay-cash-btn"
             >
-              <Banknote className="w-5 h-5 mr-2" />
+              {fiscalLoading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Banknote className="w-5 h-5 mr-2" />}
               NUMERAR
             </Button>
             <Button
               onClick={() => handlePayment('card')}
-              disabled={cart.length === 0}
+              disabled={cart.length === 0 || fiscalLoading}
               className="h-14 text-lg font-bold bg-blue-600 hover:bg-blue-700 text-white"
+              data-testid="pay-card-btn"
             >
-              <CreditCard className="w-5 h-5 mr-2" />
+              {fiscalLoading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <CreditCard className="w-5 h-5 mr-2" />}
               CARD
             </Button>
           </div>
@@ -1144,6 +1242,55 @@ export default function POSPage() {
             >
               <CheckCircle className="w-4 h-4 mr-2" />
               Finalizează Plata
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* No Bridge Confirmation Dialog */}
+      <Dialog open={showNoBridgeConfirm} onOpenChange={setShowNoBridgeConfirm}>
+        <DialogContent className="bg-card border-border max-w-md" data-testid="no-bridge-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-500">
+              <WifiOff className="w-5 h-5" />
+              Casa de Marcat Deconectata
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              Bridge-ul fiscal nu este pornit. Bonul fiscal <strong>NU</strong> va fi printat la casa de marcat.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Doriti sa continuati fara bon fiscal? Vanzarea va fi inregistrata in sistem dar <strong>fara confirmare fiscala</strong>.
+            </p>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => {
+              setShowNoBridgeConfirm(false);
+              setPendingPaymentMethod(null);
+            }}>
+              Anuleaza
+            </Button>
+            <Button 
+              className="bg-orange-600 hover:bg-orange-700"
+              onClick={async () => {
+                setShowNoBridgeConfirm(false);
+                const method = pendingPaymentMethod;
+                setPendingPaymentMethod(null);
+                let cash = 0, card = 0, tickets = 0;
+                if (method === 'numerar') cash = total;
+                else if (method === 'card') card = total;
+                else if (method === 'tichete') tickets = total;
+                else if (method === 'combinat') {
+                  cash = parseFloat(cashAmount) || 0;
+                  card = parseFloat(cardAmount) || 0;
+                  tickets = parseFloat(ticketAmount) || 0;
+                }
+                await processSaleWithFiscal(method, cash, card, tickets, true);
+              }}
+              data-testid="continue-without-fiscal-btn"
+            >
+              Continua fara bon fiscal
             </Button>
           </DialogFooter>
         </DialogContent>

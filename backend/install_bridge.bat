@@ -1,54 +1,27 @@
 @echo off
-title ANDREPAU - Instalare Bridge Service
-color 0A
-echo.
-echo ============================================================
+echo ============================================
 echo   ANDREPAU POS - Instalare Bridge Service
-echo   Casa de Marcat INCOTEX Succes M7
-echo ============================================================
+echo ============================================
 echo.
-
-:: Verifica Python
-python --version >nul 2>&1
+echo Se verifica Python...
+python --version 2>NUL
 if %errorlevel% neq 0 (
-    echo [EROARE] Python nu este instalat!
     echo.
+    echo EROARE: Python nu este instalat!
     echo Descarcati Python de pe: https://www.python.org/downloads/
     echo IMPORTANT: Bifati "Add Python to PATH" la instalare!
     echo.
     pause
-    start https://www.python.org/downloads/
-    exit /b
+    exit /b 1
 )
-
-echo [OK] Python gasit:
-python --version
+echo Python gasit!
 echo.
-
-:: Instaleaza dependente (incearca pip, apoi python -m pip)
-echo Instalare dependente...
-pip install flask flask-cors 2>nul
-if %errorlevel% neq 0 (
-    echo pip direct nu merge, incerc python -m pip...
-    python -m pip install flask flask-cors
-)
+echo Se instaleaza dependentele...
+pip install flask flask-cors
 echo.
-
-if %errorlevel% neq 0 (
-    echo [EROARE] Nu s-au putut instala dependentele!
-    pause
-    exit /b
-)
-
-echo [OK] Dependente instalate cu succes!
-echo.
-echo ============================================================
-echo   Instalare completa! 
-echo.
-echo   Pentru a porni serviciul, rulati:
-echo     python fiscal_bridge.py
-echo.
-echo   Sau dublu-click pe: start_bridge.bat
-echo ============================================================
+echo ============================================
+echo   Instalare completa!
+echo   Porniti bridge-ul cu: start_bridge.bat
+echo ============================================
 echo.
 pause

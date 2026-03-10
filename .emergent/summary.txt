@@ -17,80 +17,145 @@ The user has provided a detailed list of critical requirements for the final app
 **User's preferred language**: Romanian
 
 **what currently exists?**
-A full-stack application (React, FastAPI, MongoDB) with a PWA front-end. It includes pages for POS, Product Management, Stock, and Reports, with JWT authentication for 'Admin' and 'Casier' roles. A major feature has been implemented: a local database of all 3.7 million Romanian companies, downloaded from , allowing for instant CUI lookups. The agent has also created a new page for Operațiuni Casă and a Python-based local bridge service () to facilitate communication with local hardware. Multiple bugs, including a critical crash on select forms, have been resolved.
+A full-stack application (React, FastAPI, MongoDB) with a PWA front-end. It includes pages for POS, Product Management, and a new Operațiuni Casă page designed to interact with the fiscal printer. A key feature is a local database of 3.7 million Romanian companies for instant CUI lookups.
+
+A Python-based local bridge service () has been developed to connect the web app to the user's local hardware. This service includes a built-in HTML test page, diagnostic tools, and is packaged with  scripts for easy installation on Windows. The main application's  has a button to download this bridge service as a ZIP file.
+
+After extensive debugging, the agent received definitive documentation from the user () containing the exact command formats for the INCOTEX fiscal printer.
 
 **Last working item**:
-    - Last item agent was working: The agent was actively debugging the connection between the application and the INCOTEX SUCCES M7 fiscal printer via a local Python bridge service running on the user's store PC. After multiple failed attempts using TCP sockets and direct Serial communication, the agent received a screenshot of the  configuration, confirming it uses a **file-based communication method** ( and ) on the  serial port. The immediate next step is to get this file-based communication working.
-    - Status: BLOCKED
+    - Last item agent was working: The agent was in the middle of updating the  script with the newly discovered, correct command formats for the INCOTEX fiscal printer. The key discoveries from the user-provided files were that all monetary values must be sent as integers in **bani** (cents), not lei (RON), and some commands do not require a trailing semicolon.
+    - Status: IN PROGRESS
     - Agent Testing Done: N
-    - Which testing method agent to use? The agent must guide the user to test the local bridge service directly on their PC. No automated testing agent is applicable here.
+    - Which testing method agent to use? The agent must guide the user to test the local bridge service directly on their PC using the built-in test page (). No automated testing agent is applicable for this hardware integration.
     - User Testing Done: N
 
 **All Pending/In progress Issue list**:
-  - Issue 1: **Establish reliable communication with the INCOTEX fiscal printer.** (Priority: P0)
+  - Issue 1: **Implement and validate all fiscal printer commands using the correct format.** (Priority: P0)
   
   Issues Detail:
   - Issue 1: 
-     - Attempted fixes: The agent tried creating a bridge service that used direct TCP sockets and then direct serial port () communication, both of which failed. The user's screenshot of the  configuration panel proves the communication is file-based.
+     - Attempted fixes: The agent tried numerous command formats (text-based , numeric , etc.), which all failed. The breakthrough came when the user provided  containing examples of correct  files.
      - Next debug checklist: 
-        1.  Instruct the user to **click the Start procesare button** within the  application window to ensure it is actively monitoring for command files.
-        2.  Confirm the exact working directory where  expects the  command file. The path is likely fiscal_bridge.pyONLINE.TXTERROR.TXT/app/backend/fiscal_bridge.py<Select>data.gov.roCashOperationsPage.jsfiscal_bridge.py
-/app/
-├── backend/
-│   ├── server.py             # Main FastAPI application, cloud-hosted API
-│   ├── fiscal_bridge.py      # NEW: Local bridge service (Python/Flask) to run on user's PC
-│   ├── import_companies.py   # Script used to import the 3.7M companies
-│   └── .env
-├── frontend/
-│   ├── src/
-│   │   ├── pages/
-│   │   │   ├── CashOperationsPage.js # NEW: UI for fiscal printer operations
-│   │   │   ├── POSPage.js
-│   │   │   ├── ProductsPage.js
-│   │   │   └── ...
-│   │   ├── App.js
-│   │   └── ...
-│   └── .env
-└── memory/
-    └── PRD.md
-SuccesDrv.exeONLINE.TXTERROR.TXTidnumecod_barepret_vanzarestocstoc_minimcuidenumireadresaitemstotalpayment_methodtypeamounttimestampuser_idpyserial/app/backend/fiscal_bridge.py/app/frontend/src/pages/CashOperationsPage.jsSuccesDrv.iniSuccesDrvfiscal_bridge.py/health/fiscal/report/x/fiscal/receiptserver.pyfiscal_bridge.pySuccesDrvC:\kit sistem\ANDREPAU\SuccesDrv_8_3`.
-- **The user MUST click Start procesare** in the  application for it to start monitoring the  file. This is a likely reason for past failures.
-- The browser security policy (CORS, loopback) prevents a secure (HTTPS) PWA from directly calling an insecure (HTTP)  bridge. The agent's last approach of creating a simple, local HTML test page served by the bridge itself is the correct way to debug the hardware connection independently of the main PWA.
-- The user has a very clear and detailed vision for the final product (message #244). Refer to this as your primary product requirements document.
+        1.  Finish updating all functions in  (, , , etc.) to use the newly discovered command formats.
+        2.  Ensure all monetary values are converted to integers representing **bani** (cents) before being sent to the printer.
+        3.  Ensure commands like  (Anulare),  (Raport X), and  (Raport Z) are sent **without** a trailing semicolon.
+        4.  Guide the user to download the updated bridge, run it, and test every function from the  page to confirm physical printing/operation.
+     - Why fix this issue and what will be achieved with the fix? This is the final step to achieve a working hardware integration, which is the highest priority blocker. This will enable all core POS functionalities like printing receipts and managing cash.
+     - Status:  IN PROGRESS
+     - Is recurring issue? Y (Finding the correct commands has been a persistent issue, but is now believed to be solved).
+     - Should Test frontend/backend/both after fix? This is a hardware integration issue requiring manual testing on the user's local PC.
+     - Blocked on other issue: None.
+
+**In progress Task List**:
+  - Task 1:  Finalize the Fiscal Bridge Service Implementation
+     - Where to resume: Continue editing . The agent has started updating the command functions based on the user's documentation but has not completed all of them. The , /, and report functions were the last ones being edited.
+     - What will be achieved with this? A fully functional  that can correctly command the INCOTEX printer for all required operations.
+     - Status:  IN PROGRESS
+     - Should Test frontend/backend/both after fix? Manual user testing is required.
+     - Blocked on something: Nothing.
+
+**Upcoming and Future Tasks**
+    Upcoming Tasks:
+    - **P0: Integrate POSPage with Fiscal Bridge:** Once the bridge is confirmed working, modify  so the Plateste button calls the bridge to print a fiscal receipt *before* saving the sale to the database.
+    - **P1: Complete Operațiuni Casă Module:** Fully wire up the UI in  to call the working bridge endpoints for X/Z reports, cash in/out, and displaying status.
+    - **P2: Implement Atomic Stock Deduction:** Modify the backend  endpoint to only deduct stock *after* receiving confirmation that the fiscal receipt was printed successfully. Implement a  flow to restore stock if printing fails.
+    - **P3: Fix UI Bug:** Find and remove the stray 100 text appearing on the UI.
+    - **P4: Implement Minimum Stock Alerts:** Create the backend logic and frontend UI for stock alerts.
+    - **P5: Prevent Duplicate Sales:** Implement a unique transaction ID in the sales flow.
+    - **P6: Implement Professional Logging:** Add logging for all critical application events.
+    
+    Future Tasks:
+    - **P7: NIR from PDF Import:** Build the module to parse supplier invoices from PDF files.
+    - **P8: Verifone V200c Integration:** Integrate the card payment terminal (blocked on user obtaining ECR documentation).
+
+**Completed work in this session**
+- **Fiscal Bridge Development:** Created a comprehensive  with Flask, featuring a built-in HTML test page, diagnostics, a command scanner, and  scripts for easy installation.
+- **Frontend UI Enhancements:** Updated  to show bridge status and added a button to download the bridge service as a ZIP file.
+- **Critical Command Discovery:** After extensive trial-and-error, the agent successfully guided the user to obtain definitive documentation () for the fiscal printer commands. The agent analyzed these files and discovered the correct formats, including the crucial requirements to use **bani (cents)** for all monetary values and to omit semicolons for certain commands.
+- **Command Implementation:** Began implementing the correct, newly discovered commands into the  script.
+
+**Earlier issues found/mentioned but not fixed**
+   - A stray 100 text appearing on the UI, which is listed in the upcoming tasks.
+
+**Known issue recurrence from previous fork**
+  - None.
+
+**Code Architecture**
+
+
+**Key Technical Concepts**
+- **Backend:** FastAPI, Python, MongoDB
+- **Frontend:** React, Tailwind CSS, Shadcn UI
+- **Architecture:** Hybrid model: a cloud-hosted PWA communicates with a local Python bridge service for hardware interaction.
+- **Hardware Communication:** File-based via  (, ).
+- **CRITICAL COMMAND FORMAT:** All monetary values must be sent as integers representing **bani (cents)**. For example, 1.20 RON is sent as . Commands like  (Anulare),  (Raport X), and  (Raport Z) are sent **without** a trailing semicolon.
+
+**key DB schema**
+  - **products**: uid=0(root) gid=0(root) groups=0(root), , , , , , ...
+  - **companies**: , , 
+  - **sales**: , , , ...
+  - **cash_operations**: (To be fully implemented)
+
+**changes in tech stack**
+  - None.
+
+**All files of reference**
+- : **CRITICAL FILE.** Must be updated with the final, correct command formats.
+- : The UI for cash register operations.
+- The user-provided artifact  is the source of truth for all fiscal command formats. The agent has already extracted and analyzed its contents.
+
+**Areas that need refactoring**:
+-  can be cleaned up to remove the now-obsolete command scanner and logic for old, incorrect command formats.
+
+**key api endpoints**
+- **Local Bridge ():**
+    - , 
+    - , 
+    - , 
+    - , 
+    - 
+- **Main Backend:**
+    - : Serves the ZIP file for the local bridge service.
+
+**Critical Info for New Agent**
+- **The command formats are KNOWN.** Refer to the agent's analysis in message #288. Do not try to guess or use old formats.
+- **Key Detail #1: All prices/amounts must be sent as integers in BANI (cents).** 1.20 RON = .
+- **Key Detail #2: Commands  (Anulare),  (Raport X), and  (Raport Z) do not have a trailing semicolon.** All other commands do.
+- The  script runs on the user's local PC. Your job is to finish implementing the correct commands and guide the user through testing each function via the  page.
+- The immediate goal is to finalize  and get confirmation from the user that all test buttons (Bon Normal, Bon CUI, Intrare/Extragere Bani, etc.) work as expected on the physical printer.
 
 **documents and test reports created in this job**
-  - /app/memory/PRD.md
-  - /app/test_reports/iteration_2.json
-  - /app/test_reports/iteration_3.json
+  - The agent created and packaged , , and  into a downloadable .
+  - The user provided , which contains the definitive command documentation.
 
 **Last 10 User Messages and any pending HUMAN messages** 
- - User provides the manual for the cash register keyboard, which the agent correctly identifies as not being for the software driver. (DONE)
- - Agent proposes using serial communication and asks for a screenshot of the driver config. (DONE)
- - User provides the crucial screenshot of the  application window, confirming the file-based method. (PENDING - Agent has not acted on this latest info yet).
- - Agent asks the user to try running commands after seeing a  error for . (DONE)
- - User states that the old application must be closed to test, as it cannot be minimized. (DONE)
- - User confirms  is not found even after running a report from the old app. (DONE)
- - Agent correctly deduces the old app might be writing to a different folder and asks for its location. (DONE)
- - Agent asks the user to search the entire C: drive for . (DONE)
- - User confirms the search found no  file. (DONE)
- - Agent pivots to a TCP-based communication method. (FAILED - Led to connection refused errors).
+ - User asks for a professionally written prompt to request command examples from their former IT contact. (DONE)
+ - Agent provides the prompt. (DONE)
+ - User requests the prompt be adapted to sound more personal and less corporate. (DONE)
+ - Agent provides a revised, casual prompt. (DONE)
+ - User confirms they received the command examples and uploads . (ACTIONABLE - This is the key artifact)
+ - Agent analyzes the zip file and lists out the correct, final command formats for all fiscal operations. (DONE)
+ - Agent begins implementing these correct commands into . (IN PROGRESS)
+ - User asks for a re-iteration of the prompt to send to the IT guy. Agent provides a final, polished version. (DONE)
+ - User confirms receipt of the documentation and asks for a summary of what the documentation contains. (DONE, agent provided summary in msg #288)
 
 **Project Health Check:**
-- **Broken:** Yes. The core functionality of printing fiscal receipts is non-operational and is blocked on establishing the hardware connection.
+- **Broken:** Yes. The core fiscal printer integration is not yet fully implemented or tested with the correct commands. The main application is not yet connected to the bridge.
 
 **3rd Party Integrations**
-- **INCOTEX SUCCES M7 (Cash Register):** In progress, via  software.
-- **Verifone V200c (Bank POS):** Not started. Blocked on user obtaining ECR documentation from Raiffeisen bank.
+- **INCOTEX SUCCES M7 (Cash Register):** In progress. All necessary commands are now known; implementation is underway.
+- **Verifone V200c (Bank POS):** Not started. Blocked on user obtaining documentation.
 
 **Testing status**
-  - Testing agent used after significant changes: YES (For previous features like CUI search).
-  - Troubleshoot agent used after agent stuck in loop: NO
-  - Test files created: []
-  - Known regressions: [None]
+  - Testing agent used after significant changes: Yes, but this was *before* the final command formats were discovered.
+  - Troubleshoot agent used after agent stuck in loop: No.
+  - Test files created: None.
+  - Known regressions: None.
 
 **Credentials to test flow:**
 - **Admin:**  / 
 - **Casier:**  / 
 
 **What agent forgot to execute**
-- The agent went through several cycles of debugging different communication methods (TCP, serial) after seeing  was not found, instead of first insisting the user confirm that  was actively processing and checking its working directory. The user's final screenshot showing the config was the key piece of information that should have been requested earlier.</analysis>
+- Nothing was forgotten. The agent followed a logical, iterative debugging process that successfully led to the discovery of the correct command formats. The next step is to complete the implementation based on this new information.</analysis>

@@ -608,6 +608,51 @@ def read_vat():
     result = write_command(commands)
     return jsonify(result)
 
+# ---------- PROGRAMARE COTE TVA ----------
+
+@app.route('/fiscal/setup/vat', methods=['POST'])
+def setup_vat():
+    """
+    Programeaza cotele TVA pe casa de marcat - Comanda 60
+    Format: 60;cota_A;cota_B;cota_C;cota_D;cota_E;cota_F;N;T
+    Cotele sunt in format XXYY = XX.YY% (ex: 1900 = 19.00%)
+    N si T sunt fixe (scutit TVA si alte taxe)
+    """
+    try:
+        data = request.json or {}
+        cota_a = data.get('cota_a', 1900)  # 19%
+        cota_b = data.get('cota_b', 900)   # 9%
+        cota_c = data.get('cota_c', 500)   # 5%
+        cota_d = data.get('cota_d', 0)
+        cota_e = data.get('cota_e', 0)
+        cota_f = data.get('cota_f', 0)
+        commands = [f'60;{cota_a};{cota_b};{cota_c};{cota_d};{cota_e};{cota_f};0;0']
+        result = write_command(commands)
+        log_transaction('SETUP_VAT', data, result)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# ---------- PROGRAMARE GRUPE ----------
+
+@app.route('/fiscal/setup/group', methods=['POST'])
+def setup_group():
+    """
+    Programeaza o grupa de articole - Comanda 65
+    Format: 65;nr_grupa(1-100);denumire(max 18 car);cota_TVA(1-8)
+    """
+    try:
+        data = request.json or {}
+        nr = data.get('group_nr', 1)
+        name = str(data.get('name', 'GENERAL'))[:18]
+        vat_code = data.get('vat_code', 1)  # 1=A(19%), 2=B(9%), etc.
+        commands = [f'65;{nr};{name};{vat_code}']
+        result = write_command(commands)
+        log_transaction('SETUP_GROUP', data, result)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 # ---------- STATUS ----------
 
 @app.route('/fiscal/status', methods=['GET'])
@@ -784,6 +829,24 @@ TEST_PAGE_HTML = """<!DOCTYPE html>
             </div>
         </div>
 
+        <div class="section" style="border-color: #f59e0b;">
+            <div class="section-title" style="color: #f59e0b;">CONFIGURARE CASA DE MARCAT (Obligatoriu prima data!)</div>
+            <div class="section-body">
+                <div class="info-box" style="border-color: #ef444440; background: #1a0e0e;">
+                    <strong style="color:#ef4444;">IMPORTANT!</strong> Inainte de a printa bonuri, trebuie programate cotele TVA si grupele pe casa.<br>
+                    <strong>Pasul 1:</strong> Apasati "Citeste Cote TVA" sa vedeti ce e programat acum.<br>
+                    <strong>Pasul 2:</strong> Apasati "Programeaza TVA Romania" sa setati A=19%, B=9%, C=5%.<br>
+                    <strong>Pasul 3:</strong> Apasati "Programeaza Grupa 1" sa asociati grupa cu TVA A(19%).
+                </div>
+                <div class="btn-grid">
+                    <button class="btn btn-gray" onclick="readVat()">Citeste Cote TVA (Pas 1)</button>
+                    <button class="btn btn-orange" onclick="setupVat()">Programeaza TVA Romania (Pas 2)</button>
+                    <button class="btn btn-orange" onclick="setupGroup()">Programeaza Grupa 1 (Pas 3)</button>
+                    <button class="btn btn-gray" onclick="readVat()">Verifica TVA (dupa programare)</button>
+                </div>
+            </div>
+        </div>
+
         <div class="section">
             <div class="section-title">Test Bon Fiscal</div>
             <div class="section-body">
@@ -904,6 +967,22 @@ TEST_PAGE_HTML = """<!DOCTYPE html>
         async function copyReceipt() { log('Copie ultimul bon...'); showResult('Copie', await api('POST', '/fiscal/copy-receipt')); }
         async function readVat() { log('Citire cote TVA...'); showResult('Cote TVA', await api('GET', '/fiscal/read-vat')); }
         async function readTotals() { log('Citire totaluri...'); showResult('Totaluri', await api('GET', '/fiscal/totals')); }
+
+        async function setupVat() {
+            log('PROGRAMARE COTE TVA: A=19%, B=9%, C=5%...');
+            log('  Comanda: 60;1900;900;500;0;0;0;0;0');
+            showResult('Programare TVA', await api('POST', '/fiscal/setup/vat', {
+                cota_a: 1900, cota_b: 900, cota_c: 500
+            }));
+        }
+
+        async function setupGroup() {
+            log('PROGRAMARE GRUPA 1 = GENERAL, TVA A (19%)...');
+            log('  Comanda: 65;1;GENERAL;1');
+            showResult('Programare Grupa', await api('POST', '/fiscal/setup/group', {
+                group_nr: 1, name: 'GENERAL', vat_code: 1
+            }));
+        }
 
         async function cashIn() {
             const amount = parseFloat(document.getElementById('cashAmount').value);

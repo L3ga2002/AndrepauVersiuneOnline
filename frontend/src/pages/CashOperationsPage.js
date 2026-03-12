@@ -221,6 +221,40 @@ export default function CashOperationsPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-foreground">Operatiuni Casa</h1>
         <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm"
+            className="text-xs"
+            onClick={async () => {
+              try {
+                toast.info('Se descarcă...');
+                const resp = await fetch(`${API_URL}/bridge/download`, {
+                  headers: { Authorization: `Bearer ${token}` }
+                });
+                if (!resp.ok) throw new Error('Eroare descărcare');
+                const blob = await resp.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = 'ANDREPAU_Bridge_Service.zip';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                  document.body.removeChild(a);
+                  window.URL.revokeObjectURL(url);
+                }, 1000);
+                toast.success('Bridge Service descarcat!');
+              } catch (err) {
+                console.error('Download error:', err);
+                toast.error('Eroare la descarcare: ' + err.message);
+              }
+            }}
+            data-testid="header-download-bridge-btn"
+          >
+            <Download className="w-4 h-4 mr-1" />
+            Descarca Bridge
+          </Button>
           <div 
             className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm cursor-pointer ${
               bridgeStatus.connected ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'
@@ -260,6 +294,7 @@ export default function CashOperationsPage() {
                 className="mt-3 bg-primary hover:bg-primary/90"
                 onClick={async () => {
                   try {
+                    toast.info('Se descarcă...');
                     const resp = await fetch(`${API_URL}/bridge/download`, {
                       headers: { Authorization: `Bearer ${token}` }
                     });
@@ -267,13 +302,19 @@ export default function CashOperationsPage() {
                     const blob = await resp.blob();
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
+                    a.style.display = 'none';
                     a.href = url;
                     a.download = 'ANDREPAU_Bridge_Service.zip';
+                    document.body.appendChild(a);
                     a.click();
-                    window.URL.revokeObjectURL(url);
+                    setTimeout(() => {
+                      document.body.removeChild(a);
+                      window.URL.revokeObjectURL(url);
+                    }, 1000);
                     toast.success('Bridge Service descarcat!');
-                  } catch {
-                    toast.error('Eroare la descarcare');
+                  } catch (err) {
+                    console.error('Download error:', err);
+                    toast.error('Eroare la descarcare: ' + err.message);
                   }
                 }}
                 data-testid="download-bridge-btn"

@@ -89,7 +89,7 @@ export default function POSPage() {
       name: String(item.nume || 'Produs').substring(0, 38),
       quantity: item.cantitate,
       price: item.pret_unitar,
-      vat: item.tva || 19,
+      vat: item.tva || 21,
       um: item.unitate || 'buc'
     }));
 

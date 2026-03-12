@@ -150,12 +150,26 @@ UM_MAP = {
 }
 
 # Mapare cota TVA
-# 1 = TVA A (19%), 2 = TVA B (9%), 7 = SCUTIT TVA, 8 = ALTE TAXE
+# Cotele TVA Romania (actualizat august 2025, Legea 141/2025):
+# 1 = TVA A (21% standard), 2 = TVA B (11% redusa), 3 = TVA C (0% scutit),
+# 4 = TVA D (9% tranzitorie locuinte), 7 = SCUTIT TVA, 8 = ALTE TAXE
 TVA_MAP = {
-    19: '1',
-    9: '2',
+    21: '1',
+    11: '2',
+    0: '3',
+    9: '4',
     5: '3',
-    0: '7',
+}
+
+# Valorile pentru programarea casei de marcat (comanda 60)
+# Format: procent * 100 (ex: 21% = 2100)
+DEFAULT_TVA_RATES = {
+    'A': 2100,  # 21% standard
+    'B': 1100,  # 11% redusa
+    'C': 0,     # 0% scutit/export
+    'D': 900,   # 9% tranzitorie
+    'E': 0,
+    'F': 0,
 }
 
 # ===================== LOGGING =====================
@@ -615,20 +629,21 @@ def setup_vat():
     """
     Programeaza cotele TVA pe casa de marcat - Comanda 60
     Format: 60;cota_A;cota_B;cota_C;cota_D;cota_E;cota_F;N;T
-    Cotele sunt in format XXYY = XX.YY% (ex: 1900 = 19.00%)
-    N si T sunt fixe (scutit TVA si alte taxe)
+    Cotele sunt in format XXYY = XX.YY% (ex: 2100 = 21.00%)
+    Valori implicite: A=21%(standard), B=11%(redusa), C=0%(scutit), D=9%(tranzitorie)
+    Conform Legea 141/2025, valabil de la 1 august 2025
     """
     try:
         data = request.json or {}
-        cota_a = data.get('cota_a', 1900)  # 19%
-        cota_b = data.get('cota_b', 900)   # 9%
-        cota_c = data.get('cota_c', 500)   # 5%
-        cota_d = data.get('cota_d', 0)
-        cota_e = data.get('cota_e', 0)
-        cota_f = data.get('cota_f', 0)
+        cota_a = data.get('cota_a', DEFAULT_TVA_RATES['A'])
+        cota_b = data.get('cota_b', DEFAULT_TVA_RATES['B'])
+        cota_c = data.get('cota_c', DEFAULT_TVA_RATES['C'])
+        cota_d = data.get('cota_d', DEFAULT_TVA_RATES['D'])
+        cota_e = data.get('cota_e', DEFAULT_TVA_RATES['E'])
+        cota_f = data.get('cota_f', DEFAULT_TVA_RATES['F'])
         commands = [f'60;{cota_a};{cota_b};{cota_c};{cota_d};{cota_e};{cota_f};0;0']
         result = write_command(commands)
-        log_transaction('SETUP_VAT', data, result)
+        log_transaction('SETUP_VAT', {'command': commands[0]}, result)
         return jsonify(result)
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -834,15 +849,32 @@ TEST_PAGE_HTML = """<!DOCTYPE html>
             <div class="section-body">
                 <div class="info-box" style="border-color: #ef444440; background: #1a0e0e;">
                     <strong style="color:#ef4444;">IMPORTANT!</strong> Inainte de a printa bonuri, trebuie programate cotele TVA si grupele pe casa.<br>
-                    <strong>Pasul 1:</strong> Apasati "Citeste Cote TVA" sa vedeti ce e programat acum.<br>
-                    <strong>Pasul 2:</strong> Apasati "Programeaza TVA Romania" sa setati A=19%, B=9%, C=5%.<br>
-                    <strong>Pasul 3:</strong> Apasati "Programeaza Grupa 1" sa asociati grupa cu TVA A(19%).
+                    Conform <strong>Legea 141/2025</strong> (ANAF), de la 1 august 2025:<br>
+                    <strong>A = 21%</strong> (standard) | <strong>B = 11%</strong> (redusa) | <strong>C = 0%</strong> (scutit/export) | <strong>D = 9%</strong> (tranzitorie locuinte)
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:12px;">
+                    <div class="input-group" style="flex-direction:column; margin:0;">
+                        <label style="min-width:auto; margin-bottom:4px;">Cota A (standard):</label>
+                        <input type="number" id="vatA" value="21" step="0.01" min="0" max="50" style="text-align:center;">
+                    </div>
+                    <div class="input-group" style="flex-direction:column; margin:0;">
+                        <label style="min-width:auto; margin-bottom:4px;">Cota B (redusa):</label>
+                        <input type="number" id="vatB" value="11" step="0.01" min="0" max="50" style="text-align:center;">
+                    </div>
+                    <div class="input-group" style="flex-direction:column; margin:0;">
+                        <label style="min-width:auto; margin-bottom:4px;">Cota C (scutit):</label>
+                        <input type="number" id="vatC" value="0" step="0.01" min="0" max="50" style="text-align:center;">
+                    </div>
+                    <div class="input-group" style="flex-direction:column; margin:0;">
+                        <label style="min-width:auto; margin-bottom:4px;">Cota D (tranzitorie):</label>
+                        <input type="number" id="vatD" value="9" step="0.01" min="0" max="50" style="text-align:center;">
+                    </div>
                 </div>
                 <div class="btn-grid">
-                    <button class="btn btn-gray" onclick="readVat()">Citeste Cote TVA (Pas 1)</button>
-                    <button class="btn btn-orange" onclick="setupVat()">Programeaza TVA Romania (Pas 2)</button>
-                    <button class="btn btn-orange" onclick="setupGroup()">Programeaza Grupa 1 (Pas 3)</button>
-                    <button class="btn btn-gray" onclick="readVat()">Verifica TVA (dupa programare)</button>
+                    <button class="btn btn-gray" onclick="readVat()">1. Citeste TVA curente</button>
+                    <button class="btn btn-orange" onclick="setupVat()">2. Programeaza TVA pe casa</button>
+                    <button class="btn btn-orange" onclick="setupGroup()">3. Programeaza Grupa 1</button>
+                    <button class="btn btn-gray" onclick="readVat()">4. Verifica TVA</button>
                 </div>
             </div>
         </div>
@@ -855,7 +887,7 @@ TEST_PAGE_HTML = """<!DOCTYPE html>
                     <strong>Preturi:</strong> in BANI (x100). Ex: 35.50 RON = <code>3550</code><br>
                     <strong>Cantitati:</strong> cu punct zecimal. Ex: 2.5 = <code>2.5</code><br>
                     <strong>UM:</strong> 1=fara, 2=Buc, 3=Kg, 4=m, 5=L, 6=mp, 7=bax, 8=mc<br>
-                    <strong>TVA:</strong> 1=19%, 2=9%, 7=Scutit, 8=Alte taxe<br>
+                    <strong>TVA:</strong> 1=A(21%), 2=B(11%), 3=C(0%), 4=D(9%), 7=Scutit, 8=Alte taxe<br>
                     <strong>Plata:</strong> <code>5;suma_bani;1(numerar);1;0</code> | CARD: <code>5;;2;1;0</code> (fara suma!)
                 </div>
                 <div class="btn-grid">
@@ -969,10 +1001,14 @@ TEST_PAGE_HTML = """<!DOCTYPE html>
         async function readTotals() { log('Citire totaluri...'); showResult('Totaluri', await api('GET', '/fiscal/totals')); }
 
         async function setupVat() {
-            log('PROGRAMARE COTE TVA: A=19%, B=9%, C=5%...');
-            log('  Comanda: 60;1900;900;500;0;0;0;0;0');
+            const a = Math.round(parseFloat(document.getElementById('vatA').value) * 100);
+            const b = Math.round(parseFloat(document.getElementById('vatB').value) * 100);
+            const c = Math.round(parseFloat(document.getElementById('vatC').value) * 100);
+            const d = Math.round(parseFloat(document.getElementById('vatD').value) * 100);
+            log('PROGRAMARE COTE TVA: A=' + (a/100) + '%, B=' + (b/100) + '%, C=' + (c/100) + '%, D=' + (d/100) + '%');
+            log('  Comanda: 60;' + a + ';' + b + ';' + c + ';' + d + ';0;0;0;0');
             showResult('Programare TVA', await api('POST', '/fiscal/setup/vat', {
-                cota_a: 1900, cota_b: 900, cota_c: 500
+                cota_a: a, cota_b: b, cota_c: c, cota_d: d
             }));
         }
 

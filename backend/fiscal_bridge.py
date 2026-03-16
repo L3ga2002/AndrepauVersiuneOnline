@@ -112,7 +112,7 @@ def parse_ini_file(ini_path):
 
 # ===================== CONFIGURARE =====================
 
-if len(sys.argv) > 1:
+if len(sys.argv) > 1 and not sys.argv[1].startswith('http'):
     SUCCESDRV_PATH = sys.argv[1]
 else:
     SUCCESDRV_PATH = find_succesdrv_path() or r"C:\kit sistem\ANDREPAU\SuccesDrv_8_3"
@@ -1126,14 +1126,17 @@ CLOUD_URL = None  # Set from command line or config
 
 def cloud_get(url):
     """HTTP GET folosind urllib (fara requests)"""
-    req = urllib.request.Request(url)
+    req = urllib.request.Request(url, headers={'User-Agent': 'ANDREPAU-Bridge/3.1'})
     resp = urllib.request.urlopen(req, timeout=10)
     return json.loads(resp.read().decode('utf-8'))
 
 def cloud_post(url, data=None):
     """HTTP POST folosind urllib (fara requests)"""
     body = json.dumps(data or {}).encode('utf-8')
-    req = urllib.request.Request(url, data=body, headers={'Content-Type': 'application/json'})
+    req = urllib.request.Request(url, data=body, headers={
+        'Content-Type': 'application/json',
+        'User-Agent': 'ANDREPAU-Bridge/3.1'
+    })
     resp = urllib.request.urlopen(req, timeout=10)
     return json.loads(resp.read().decode('utf-8'))
 

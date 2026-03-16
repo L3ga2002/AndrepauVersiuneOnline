@@ -17,7 +17,7 @@ if %errorlevel% neq 0 (
 echo Python gasit!
 echo.
 echo Se instaleaza dependentele...
-pip install flask flask-cors
+pip install flask flask-cors requests
 echo.
 echo ============================================
 echo   Instalare completa!

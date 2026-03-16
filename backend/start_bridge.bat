@@ -1,22 +1,21 @@
 @echo off
 cd /d "%~dp0"
 echo ============================================
-echo   ANDREPAU POS - Bridge Service v3.0
+echo   ANDREPAU POS - Bridge Service v3.1
 echo   Casa de Marcat INCOTEX Succes M7
 echo ============================================
 echo.
 echo Folder curent: %CD%
-echo Fisier bridge: %CD%\fiscal_bridge.py
 echo.
-echo Pornire bridge service...
-echo Pagina test: http://localhost:5555/test
+echo Pornire bridge cu conexiune la cloud (PWA)...
+echo Pagina test locala: http://localhost:5555/test
 echo.
 echo Asigurati-va ca SuccesDrv are "Start procesare" apasat!
 echo.
-python "%~dp0fiscal_bridge.py"
+python "%~dp0fiscal_bridge.py" "https://andrepau-fiscal.preview.emergentagent.com"
 if %errorlevel% neq 0 (
     echo.
-    echo EROARE la pornire! Verificati ca Python este instalat.
+    echo EROARE la pornire! Verificati ca Python si requests sunt instalate.
     echo Rulati intai: install_bridge.bat
     pause
 )

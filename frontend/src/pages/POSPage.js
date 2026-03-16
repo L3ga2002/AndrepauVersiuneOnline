@@ -51,27 +51,25 @@ export default function POSPage() {
   const [fiscalLoading, setFiscalLoading] = useState(false);
   const [showNoBridgeConfirm, setShowNoBridgeConfirm] = useState(false);
   const [pendingPaymentMethod, setPendingPaymentMethod] = useState(null);
-  
-  const BRIDGE_URL = localStorage.getItem('andrepau_bridge_url') || 'http://localhost:5555';
 
   const searchRef = useRef(null);
 
-  // Check bridge connection
+  // Check bridge connection via cloud
   const checkBridge = useCallback(async () => {
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 2000);
-      const resp = await fetch(`${BRIDGE_URL}/health`, { 
-        signal: controller.signal,
-        mode: 'cors',
-        cache: 'no-cache'
+      const resp = await fetch(`${API_URL}/fiscal/bridge-status`, {
+        headers: { Authorization: `Bearer ${token}` }
       });
-      clearTimeout(timeout);
-      setBridgeConnected(resp.ok);
+      if (resp.ok) {
+        const data = await resp.json();
+        setBridgeConnected(data.connected);
+      } else {
+        setBridgeConnected(false);
+      }
     } catch {
       setBridgeConnected(false);
     }
-  }, [BRIDGE_URL]);
+  }, [API_URL, token]);
 
   useEffect(() => {
     checkBridge();
@@ -79,15 +77,36 @@ export default function POSPage() {
     return () => clearInterval(interval);
   }, [checkBridge]);
 
-  // Call bridge endpoint
-  const callBridge = async (endpoint, method = 'POST', body = null) => {
-    const opts = { method, headers: { 'Content-Type': 'application/json' } };
-    if (body) opts.body = JSON.stringify(body);
-    const resp = await fetch(`${BRIDGE_URL}${endpoint}`, opts);
-    return resp.json();
+  // Send fiscal command via cloud queue and wait for result
+  const callBridgeCloud = async (jobType, data = {}) => {
+    const response = await fetch(`${API_URL}/fiscal/queue`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ type: jobType, data })
+    });
+    if (!response.ok) throw new Error('Eroare trimitere comanda');
+    const { job_id } = await response.json();
+    
+    // Poll for result (max 35 sec)
+    for (let i = 0; i < 35; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      const statusResp = await fetch(`${API_URL}/fiscal/status/${job_id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (statusResp.ok) {
+        const job = await statusResp.json();
+        if (job.status === 'completed' || job.status === 'failed') {
+          return job.result || { success: job.status === 'completed' };
+        }
+      }
+    }
+    return { success: false, message: 'Timeout - bridge-ul nu raspunde' };
   };
 
-  // Print fiscal receipt via bridge
+  // Print fiscal receipt via cloud queue
   const printFiscalReceipt = async (paymentMethod, cashAmt, cardAmt, ticketAmt, clientInfo = null) => {
     const items = cart.map(item => ({
       name: String(item.nume || 'Produs').substring(0, 38),
@@ -109,16 +128,16 @@ export default function POSPage() {
       payment.method = 'cash';
     }
 
-    const body = { items, payment };
+    const data = { items, payment };
     if (clientInfo && clientInfo.cui) {
-      body.client = {
+      data.client = {
         cui: clientInfo.cui,
         nume: clientInfo.nume || '',
         adresa: clientInfo.adresa || ''
       };
     }
 
-    return callBridge('/fiscal/receipt', 'POST', body);
+    return callBridgeCloud('receipt', data);
   };
 
   const fetchProducts = useCallback(async () => {

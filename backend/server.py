@@ -929,6 +929,97 @@ def _create_bridge_zip():
         headers={"Content-Disposition": "attachment; filename=ANDREPAU_Bridge_Service.zip"}
     )
 
+# ==================== FISCAL JOB QUEUE (Bridge Cloud Relay) ====================
+# PWA -> Backend (queue job) -> Bridge polls -> Executes -> Reports result -> PWA gets result
+
+@api_router.post("/fiscal/queue")
+async def queue_fiscal_job(data: dict, user: dict = Depends(get_current_user)):
+    """PWA trimite comanda fiscala in coada - bridge-ul o va prelua"""
+    job_id = str(uuid.uuid4())
+    job = {
+        "job_id": job_id,
+        "type": data.get("type", "receipt"),  # receipt, cash_in, cash_out, report_x, report_z, cancel, copy, drawer
+        "data": data.get("data", {}),
+        "status": "pending",
+        "result": None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": user.get("username", "unknown"),
+        "completed_at": None
+    }
+    await db.fiscal_jobs.insert_one(job)
+    return {"job_id": job_id, "status": "pending"}
+
+@api_router.get("/fiscal/pending")
+async def get_pending_jobs(bridge_key: str = None):
+    """Bridge-ul poll-uieste pentru joburi noi (nu necesita auth JWT)"""
+    # Simple key auth for bridge
+    jobs = await db.fiscal_jobs.find(
+        {"status": "pending"},
+        {"_id": 0}
+    ).sort("created_at", 1).limit(1).to_list(1)
+    
+    if jobs:
+        # Mark as processing
+        job = jobs[0]
+        await db.fiscal_jobs.update_one(
+            {"job_id": job["job_id"], "status": "pending"},
+            {"$set": {"status": "processing"}}
+        )
+        return {"job": job}
+    return {"job": None}
+
+@api_router.post("/fiscal/result/{job_id}")
+async def report_fiscal_result(job_id: str, data: dict):
+    """Bridge-ul raporteaza rezultatul executiei"""
+    result = await db.fiscal_jobs.update_one(
+        {"job_id": job_id},
+        {"$set": {
+            "status": "completed" if data.get("success") else "failed",
+            "result": data,
+            "completed_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Job negasit")
+    return {"ok": True}
+
+@api_router.get("/fiscal/status/{job_id}")
+async def get_fiscal_job_status(job_id: str):
+    """PWA verifica statusul jobului fiscal"""
+    job = await db.fiscal_jobs.find_one(
+        {"job_id": job_id},
+        {"_id": 0}
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="Job negasit")
+    return job
+
+@api_router.get("/fiscal/bridge-status")
+async def get_bridge_status():
+    """Verifica daca bridge-ul e activ (a poll-uit recent)"""
+    # Check if bridge polled in last 30 seconds
+    last_poll = await db.fiscal_bridge_status.find_one(
+        {"key": "last_poll"},
+        {"_id": 0}
+    )
+    if last_poll:
+        last_time = datetime.fromisoformat(last_poll["timestamp"])
+        now = datetime.now(timezone.utc)
+        connected = (now - last_time).total_seconds() < 30
+        return {"connected": connected, "last_poll": last_poll["timestamp"]}
+    return {"connected": False, "last_poll": None}
+
+@api_router.post("/fiscal/bridge-ping")
+async def bridge_ping():
+    """Bridge-ul trimite ping ca sa anunte ca e activ"""
+    await db.fiscal_bridge_status.update_one(
+        {"key": "last_poll"},
+        {"$set": {"key": "last_poll", "timestamp": datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+    return {"ok": True}
+
+
 # ==================== BACKUP ROUTE ====================
 
 @api_router.get("/backup")

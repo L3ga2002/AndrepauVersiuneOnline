@@ -1117,12 +1117,188 @@ def test_page():
     resp.headers['Content-Type'] = 'text/html; charset=utf-8'
     return resp
 
+# ===================== CLOUD POLLING MODE =====================
+import requests as req_lib
+
+CLOUD_URL = None  # Set from command line or config
+
+def poll_cloud_jobs():
+    """Poll-uieste backend-ul cloud pentru joburi fiscale noi"""
+    if not CLOUD_URL:
+        return
+    
+    logger.info(f"Cloud polling pornit: {CLOUD_URL}")
+    
+    while True:
+        try:
+            # Ping - anunta ca bridge-ul e activ
+            try:
+                req_lib.post(f"{CLOUD_URL}/api/fiscal/bridge-ping", timeout=5)
+            except:
+                pass
+            
+            # Poll pentru joburi
+            resp = req_lib.get(f"{CLOUD_URL}/api/fiscal/pending", timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                job = data.get("job")
+                if job:
+                    logger.info(f"Job primit: {job['job_id']} - {job['type']}")
+                    result = execute_fiscal_job(job)
+                    # Raporteaza rezultatul
+                    try:
+                        req_lib.post(
+                            f"{CLOUD_URL}/api/fiscal/result/{job['job_id']}",
+                            json=result,
+                            timeout=10
+                        )
+                        logger.info(f"Rezultat raportat: {result.get('success')}")
+                    except Exception as e:
+                        logger.error(f"Eroare raportare rezultat: {e}")
+        except Exception as e:
+            logger.error(f"Eroare polling: {e}")
+        
+        time.sleep(2)  # Poll la fiecare 2 secunde
+
+def execute_fiscal_job(job: dict) -> dict:
+    """Executa un job fiscal primit de la cloud"""
+    job_type = job.get("type", "")
+    data = job.get("data", {})
+    
+    if job_type == "receipt":
+        return execute_receipt(data)
+    elif job_type == "cash_in":
+        return execute_cash_in(data)
+    elif job_type == "cash_out":
+        return execute_cash_out(data)
+    elif job_type == "report_x":
+        return write_command(['30'])
+    elif job_type == "report_z":
+        return write_command(['15'])
+    elif job_type == "cancel":
+        return write_command(['14'])
+    elif job_type == "copy":
+        return write_command(['46'])
+    elif job_type == "drawer":
+        return write_command(['106'])
+    elif job_type == "totals":
+        return write_command(['67'])
+    elif job_type == "setup_vat":
+        cota_a = data.get('cota_a', DEFAULT_TVA_RATES['A'])
+        cota_b = data.get('cota_b', DEFAULT_TVA_RATES['B'])
+        cota_c = data.get('cota_c', DEFAULT_TVA_RATES['C'])
+        cota_d = data.get('cota_d', DEFAULT_TVA_RATES['D'])
+        return write_command([f'60;{cota_a};{cota_b};{cota_c};{cota_d};0;0;0;0'])
+    elif job_type == "setup_group":
+        nr = data.get('group_nr', 1)
+        name = str(data.get('name', 'GENERAL'))[:18]
+        vat_code = data.get('vat_code', 1)
+        return write_command([f'65;{nr};{name};{vat_code}'])
+    else:
+        return {"success": False, "message": f"Tip job necunoscut: {job_type}"}
+
+def execute_receipt(data: dict) -> dict:
+    """Construieste si trimite comenzile pentru bon fiscal"""
+    items = data.get('items', [])
+    payment = data.get('payment', {})
+    client = data.get('client', None)
+    
+    if not items:
+        return {"success": False, "message": "Nu exista produse"}
+    
+    commands = []
+    
+    if client and client.get('cui'):
+        cui = str(client.get('cui', ''))[:21]
+        nume = str(client.get('nume', ''))[:32]
+        adresa = str(client.get('adresa', ''))[:28]
+        commands.append(f'40;{nume};{cui};{adresa}')
+        commands.append(f'0;{DEFAULT_OPERATOR};{DEFAULT_PAROLA};1;I')
+    else:
+        commands.append(f'0;{DEFAULT_OPERATOR};{DEFAULT_PAROLA};1')
+    
+    for item in items:
+        name = str(item.get('name', 'Produs'))[:38]
+        qty = item.get('quantity', 1)
+        price = item.get('price', 0)
+        vat = item.get('vat', 21)
+        um = item.get('um', 'buc')
+        um_code = get_um_code(um)
+        tva_code = get_tva_code(vat)
+        pret_bani = price_to_bani(price)
+        cantitate = format_quantity(qty)
+        commands.append(f'1;{name};{um_code};{tva_code};{pret_bani};{cantitate}')
+    
+    method = payment.get('method', 'cash')
+    total = payment.get('total', 0)
+    total_bani = price_to_bani(total)
+    
+    if method == 'card':
+        commands.append('5;;2;1;0')
+    elif method == 'mixed':
+        cash_amount = payment.get('cash_amount', 0)
+        card_amount = payment.get('card_amount', 0)
+        voucher_amount = payment.get('voucher_amount', 0)
+        if voucher_amount > 0:
+            commands.append(f'5;{price_to_bani(voucher_amount)};3;1;0')
+        if cash_amount > 0:
+            commands.append(f'5;{price_to_bani(cash_amount)};1;1;0')
+        if card_amount > 0:
+            commands.append('5;;2;1;0')
+    else:
+        commands.append(f'5;{total_bani};1;1;0')
+    
+    result = write_command(commands)
+    log_transaction('RECEIPT_CLOUD', data, result)
+    return result
+
+def execute_cash_in(data: dict) -> dict:
+    amount = data.get('amount', 0)
+    if amount <= 0:
+        return {"success": False, "message": "Suma trebuie sa fie pozitiva"}
+    amount_bani = price_to_bani(amount)
+    reason = str(data.get('reason', 'Intrare numerar'))[:32]
+    operator = data.get('operator', DEFAULT_OPERATOR)
+    result = write_command([f'25;2;{amount_bani};{reason};{operator}'])
+    log_transaction('CASH_IN_CLOUD', data, result)
+    return result
+
+def execute_cash_out(data: dict) -> dict:
+    amount = data.get('amount', 0)
+    if amount <= 0:
+        return {"success": False, "message": "Suma trebuie sa fie pozitiva"}
+    amount_bani = price_to_bani(amount)
+    reason = str(data.get('reason', 'Extragere numerar'))[:32]
+    operator = data.get('operator', DEFAULT_OPERATOR)
+    result = write_command([f'25;1;{amount_bani};{reason};{operator}'])
+    log_transaction('CASH_OUT_CLOUD', data, result)
+    return result
+
 # ===================== MAIN =====================
 
 if __name__ == '__main__':
+    # Detect cloud URL from args or config
+    cloud_url = None
+    for arg in sys.argv[1:]:
+        if arg.startswith('http'):
+            cloud_url = arg.rstrip('/')
+    
+    # Try reading from config file
+    if not cloud_url:
+        config_path = os.path.join(SUCCESDRV_PATH, 'bridge_config.json')
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r') as f:
+                    cfg = json.load(f)
+                    cloud_url = cfg.get('cloud_url', '').rstrip('/')
+            except:
+                pass
+    
+    CLOUD_URL = cloud_url
+    
     print()
     print("=" * 64)
-    print("  ANDREPAU POS - Bridge Service v3.0")
+    print("  ANDREPAU POS - Bridge Service v3.1")
     print("  Casa de Marcat INCOTEX Succes M7 via SuccesDrv")
     print("  Format: Manual SuccesDRV 8.5 (2023)")
     print("=" * 64)
@@ -1131,31 +1307,39 @@ if __name__ == '__main__':
     print(f"  Fisier comenzi:  ONLINE.TXT")
     print(f"  Port COM:        {INI_CONFIG['port']}")
     print(f"  Bridge port:     {BRIDGE_PORT}")
+    if CLOUD_URL:
+        print(f"  Cloud URL:       {CLOUD_URL}")
+        print(f"  Mod:             CLOUD POLLING (comenzi de la PWA)")
+    else:
+        print(f"  Cloud URL:       Nu este configurat")
+        print(f"  Mod:             LOCAL ONLY (doar pagina de test)")
     print("-" * 64)
     print(f"  PAGINA TEST:     http://localhost:{BRIDGE_PORT}/test")
-    print(f"  DIAGNOSTIC:      http://localhost:{BRIDGE_PORT}/diagnostic")
     print("-" * 64)
-    print("  Endpoints:")
+    print("  Endpoints locale:")
     print("    POST /fiscal/receipt       Bon fiscal")
     print("    POST /fiscal/cancel        Anulare bon (cmd 14)")
     print("    POST /fiscal/report/x      Raport X (cmd 30)")
     print("    POST /fiscal/report/z      Raport Z (cmd 15)")
-    print("    POST /fiscal/cash/in       Intrare numerar (cmd 25;2)")
-    print("    POST /fiscal/cash/out      Extragere numerar (cmd 25;1)")
-    print("    POST /fiscal/drawer/open   Deschide sertar (cmd 106)")
-    print("    POST /fiscal/copy-receipt  Copie ultimul bon (cmd 46)")
-    print("    GET  /fiscal/totals        Totaluri zilnice (cmd 67)")
-    print("    GET  /fiscal/read-vat      Cote TVA (cmd 61)")
-    print("    GET  /fiscal/status        Status casa")
-    print("    POST /fiscal/test-command  Comanda manuala")
-    print("    GET  /health               Health check")
-    print("    GET  /diagnostic           Diagnostic")
+    print("    POST /fiscal/cash/in       Intrare numerar")
+    print("    POST /fiscal/cash/out      Extragere numerar")
+    print("    POST /fiscal/drawer/open   Deschide sertar")
+    print("    POST /fiscal/copy-receipt  Copie ultimul bon")
+    print("    GET  /fiscal/totals        Totaluri zilnice")
     print("    GET  /test                 Pagina de test")
     print("=" * 64)
     print()
     print("  >>> Deschideti in browser: http://localhost:5555/test <<<")
     print("  >>> Asigurati-va ca SuccesDrv are 'Start procesare' apasat! <<<")
     print()
+    
+    if CLOUD_URL:
+        print(f"  >>> CLOUD: Bridge-ul preia comenzi de la {CLOUD_URL} <<<")
+        print()
+        # Start cloud polling thread
+        poll_thread = threading.Thread(target=poll_cloud_jobs, daemon=True)
+        poll_thread.start()
+    
     print("  Apasati Ctrl+C pentru a opri serviciul")
     print()
 

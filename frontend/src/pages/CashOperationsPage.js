@@ -40,24 +40,18 @@ export default function CashOperationsPage() {
   });
   const [bridgeUrlInput, setBridgeUrlInput] = useState(bridgeUrl);
 
+  // Bridge status - check via cloud backend (not localhost)
   const checkBridgeStatus = useCallback(async () => {
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3000);
-      const response = await fetch(`${bridgeUrl}/health`, { 
-        signal: controller.signal,
-        mode: 'cors',
-        cache: 'no-cache'
+      const response = await fetch(`${API_URL}/fiscal/bridge-status`, {
+        headers: { Authorization: `Bearer ${token}` }
       });
-      clearTimeout(timeout);
       if (response.ok) {
         const data = await response.json();
         setBridgeStatus({ 
-          connected: true, 
-          status: 'CONNECTED',
-          driverExists: data.driver_exists,
-          exeFound: data.exe_found,
-          path: data.driver_path
+          connected: data.connected, 
+          status: data.connected ? 'CONNECTED' : 'DISCONNECTED',
+          lastPoll: data.last_poll
         });
       } else {
         setBridgeStatus({ connected: false, status: 'ERROR' });
@@ -65,7 +59,7 @@ export default function CashOperationsPage() {
     } catch {
       setBridgeStatus({ connected: false, status: 'DISCONNECTED' });
     }
-  }, [bridgeUrl]);
+  }, [API_URL, token]);
 
   const fetchDailyStats = useCallback(async () => {
     try {
@@ -99,15 +93,37 @@ export default function CashOperationsPage() {
     }
   };
 
-  // Fiscal operations via bridge
-  const callBridge = async (endpoint, method = 'POST', body = null) => {
+  // Fiscal operations via cloud backend (bridge polls from there)
+  const callBridge = async (jobType, data = {}) => {
     try {
-      const opts = { method, headers: { 'Content-Type': 'application/json' } };
-      if (body) opts.body = JSON.stringify(body);
-      const response = await fetch(`${bridgeUrl}${endpoint}`, opts);
-      return await response.json();
-    } catch {
-      return { success: false, message: 'Nu se poate comunica cu Bridge Service. Verificati ca fiscal_bridge.py ruleaza pe PC.' };
+      const response = await fetch(`${API_URL}/fiscal/queue`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ type: jobType, data })
+      });
+      
+      if (!response.ok) throw new Error('Eroare trimitere comanda');
+      const { job_id } = await response.json();
+      
+      // Poll for result (max 35 seconds)
+      for (let i = 0; i < 35; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        const statusResp = await fetch(`${API_URL}/fiscal/status/${job_id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (statusResp.ok) {
+          const job = await statusResp.json();
+          if (job.status === 'completed' || job.status === 'failed') {
+            return job.result || { success: job.status === 'completed', message: job.status };
+          }
+        }
+      }
+      return { success: false, message: 'Timeout - bridge-ul nu raspunde. Verificati ca e pornit!' };
+    } catch (err) {
+      return { success: false, message: `Eroare: ${err.message}` };
     }
   };
 
@@ -132,7 +148,7 @@ export default function CashOperationsPage() {
       return;
     }
     setLoading(true);
-    const result = await callBridge('/fiscal/report/x');
+    const result = await callBridge('report_x');
     if (result.success) {
       toast.success('Raport X printat cu succes');
       await saveOperation('REPORT_X', 0, 'Raport X zilnic');
@@ -148,7 +164,7 @@ export default function CashOperationsPage() {
       return;
     }
     setLoading(true);
-    const result = await callBridge('/fiscal/report/z');
+    const result = await callBridge('report_z');
     if (result.success) {
       toast.success('Raport Z printat - Ziua fiscala inchisa!');
       await saveOperation('REPORT_Z', 0, 'Inchidere zi fiscala');
@@ -166,7 +182,7 @@ export default function CashOperationsPage() {
     if (!bridgeStatus.connected) { toast.error('Bridge-ul nu este conectat!'); return; }
     
     setLoading(true);
-    const result = await callBridge('/fiscal/cash/in', 'POST', { amount, reason: cashReason || 'Intrare numerar' });
+    const result = await callBridge('cash_in', { amount, reason: cashReason || 'Intrare numerar' });
     if (result.success) {
       toast.success(`Intrare ${formatCurrency(amount)} inregistrata`);
       await saveOperation('CASH_IN', amount, cashReason || 'Intrare numerar');
@@ -186,7 +202,7 @@ export default function CashOperationsPage() {
     if (!bridgeStatus.connected) { toast.error('Bridge-ul nu este conectat!'); return; }
     
     setLoading(true);
-    const result = await callBridge('/fiscal/cash/out', 'POST', { amount, reason: cashReason || 'Extragere numerar' });
+    const result = await callBridge('cash_out', { amount, reason: cashReason || 'Extragere numerar' });
     if (result.success) {
       toast.success(`Extragere ${formatCurrency(amount)} inregistrata`);
       await saveOperation('CASH_OUT', amount, cashReason || 'Extragere numerar');
@@ -202,7 +218,7 @@ export default function CashOperationsPage() {
 
   const handleOpenDrawer = async () => {
     if (!bridgeStatus.connected) { toast.error('Bridge-ul nu este conectat!'); return; }
-    const result = await callBridge('/fiscal/drawer/open');
+    const result = await callBridge('drawer');
     if (result.success) toast.success('Sertar deschis');
     else toast.error(result.message || 'Eroare la deschidere sertar');
   };

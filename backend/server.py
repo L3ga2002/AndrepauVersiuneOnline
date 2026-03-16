@@ -915,6 +915,7 @@ def _create_bridge_zip():
         "fiscal_bridge.py": bridge_dir / "fiscal_bridge.py",
         "install_bridge.bat": bridge_dir / "install_bridge.bat",
         "start_bridge.bat": bridge_dir / "start_bridge.bat",
+        "ACTUALIZEAZA_BRIDGE.bat": bridge_dir / "actualizeaza_bridge.bat",
     }
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:

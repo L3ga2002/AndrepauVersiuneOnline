@@ -1042,43 +1042,41 @@ TEST_PAGE_HTML = """<!DOCTYPE html>
         }
 
         async function testReceiptCash() {
-            log('BON TEST: 2 articole, plata numerar...');
-            log('  Comanda: 0;1;0;1 / 1;Ciment Portland 40kg;Sac;1;3500;1 / 1;Nisip fin 40kg;Sac;1;1200;2 / 5;5900;1;1;0');
+            log('BON TEST: 1 x Colier 1 RON, plata numerar...');
+            log('  Comanda: 0;1;0;1 / 1;Colier metalic 20mm;2;1;100;1 / 5;100;1;1;0');
             showResult('Bon numerar', await api('POST', '/fiscal/receipt', {
                 items: [
-                    { name: 'Ciment Portland 40kg', quantity: 1, price: 35.00, vat: 19, um: 'sac' },
-                    { name: 'Nisip fin 40kg', quantity: 2, price: 12.00, vat: 19, um: 'sac' }
+                    { name: 'Colier metalic 20mm', quantity: 1, price: 1.00, vat: 21, um: 'buc' }
                 ],
-                payment: { method: 'cash', total: 59.00 }
+                payment: { method: 'cash', total: 1.00 }
             }));
         }
 
         async function testReceiptCard() {
-            log('BON TEST: 1 articol, plata CARD...');
-            log('  Comanda: 0;1;0;1 / 1;Bormasina Bosch 750W;2;1;25000;1 / 5;;2;1;0');
+            log('BON TEST: 1 x Colier 1 RON, plata CARD...');
+            log('  Comanda: 0;1;0;1 / 1;Colier metalic 20mm;2;1;100;1 / 5;;2;1;0');
             showResult('Bon card', await api('POST', '/fiscal/receipt', {
-                items: [{ name: 'Bormasina Bosch 750W', quantity: 1, price: 250.00, vat: 19, um: 'buc' }],
-                payment: { method: 'card', total: 250.00 }
+                items: [{ name: 'Colier metalic 20mm', quantity: 1, price: 1.00, vat: 21, um: 'buc' }],
+                payment: { method: 'card', total: 1.00 }
             }));
         }
 
         async function testReceiptCUI() {
-            log('BON TEST: cu CUI firma...');
+            log('BON TEST: 1 x Colier 1 RON cu CUI...');
             showResult('Bon CUI', await api('POST', '/fiscal/receipt', {
                 client: { cui: 'RO4381714', nume: 'FIRMA TEST SRL', adresa: 'Bucuresti' },
-                items: [{ name: 'Cablu electric 2.5mm', quantity: 10, price: 6.50, vat: 19, um: 'metru' }],
-                payment: { method: 'cash', total: 65.00 }
+                items: [{ name: 'Colier metalic 20mm', quantity: 1, price: 1.00, vat: 21, um: 'buc' }],
+                payment: { method: 'cash', total: 1.00 }
             }));
         }
 
         async function testReceiptMultiQty() {
-            log('BON TEST: cantitati multiple...');
+            log('BON TEST: 3 x Colier 1 RON = 3 RON...');
             showResult('Bon cantitati', await api('POST', '/fiscal/receipt', {
                 items: [
-                    { name: 'Teava PPR 25mm', quantity: 15.5, price: 5.50, vat: 19, um: 'metru' },
-                    { name: 'Silicon transparent', quantity: 3, price: 18.00, vat: 19, um: 'buc' }
+                    { name: 'Colier metalic 20mm', quantity: 3, price: 1.00, vat: 21, um: 'buc' }
                 ],
-                payment: { method: 'cash', total: 139.25 }
+                payment: { method: 'cash', total: 3.00 }
             }));
         }
 

@@ -44,7 +44,11 @@ export default function CashOperationsPage() {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 3000);
-      const response = await fetch(`${bridgeUrl}/health`, { signal: controller.signal });
+      const response = await fetch(`${bridgeUrl}/health`, { 
+        signal: controller.signal,
+        mode: 'cors',
+        cache: 'no-cache'
+      });
       clearTimeout(timeout);
       if (response.ok) {
         const data = await response.json();

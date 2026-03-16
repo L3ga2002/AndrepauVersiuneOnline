@@ -61,7 +61,11 @@ export default function POSPage() {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 2000);
-      const resp = await fetch(`${BRIDGE_URL}/health`, { signal: controller.signal });
+      const resp = await fetch(`${BRIDGE_URL}/health`, { 
+        signal: controller.signal,
+        mode: 'cors',
+        cache: 'no-cache'
+      });
       clearTimeout(timeout);
       setBridgeConnected(resp.ok);
     } catch {

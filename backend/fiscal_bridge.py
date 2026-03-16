@@ -191,7 +191,14 @@ logger = logging.getLogger(__name__)
 # ===================== FLASK APP =====================
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
+
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    return response
 
 fiscal_lock = threading.Lock()
 
@@ -1140,4 +1147,4 @@ if __name__ == '__main__':
     print("  Apasati Ctrl+C pentru a opri serviciul")
     print()
 
-    app.run(host='127.0.0.1', port=BRIDGE_PORT, debug=False, threaded=True)
+    app.run(host='0.0.0.0', port=BRIDGE_PORT, debug=False, threaded=True)

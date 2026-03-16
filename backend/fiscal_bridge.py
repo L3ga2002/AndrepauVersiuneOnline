@@ -1119,19 +1119,28 @@ def test_page():
 
 # ===================== CLOUD POLLING MODE =====================
 
-try:
-    import requests as req_lib
-except ImportError:
-    req_lib = None
-    print("ATENTIE: Modulul 'requests' nu e instalat. Cloud polling dezactivat.")
-    print("Rulati: python -m pip install requests")
+import urllib.request
+import urllib.error
 
 CLOUD_URL = None  # Set from command line or config
 
+def cloud_get(url):
+    """HTTP GET folosind urllib (fara requests)"""
+    req = urllib.request.Request(url)
+    resp = urllib.request.urlopen(req, timeout=10)
+    return json.loads(resp.read().decode('utf-8'))
+
+def cloud_post(url, data=None):
+    """HTTP POST folosind urllib (fara requests)"""
+    body = json.dumps(data or {}).encode('utf-8')
+    req = urllib.request.Request(url, data=body, headers={'Content-Type': 'application/json'})
+    resp = urllib.request.urlopen(req, timeout=10)
+    return json.loads(resp.read().decode('utf-8'))
+
 def poll_cloud_jobs():
     """Poll-uieste backend-ul cloud pentru joburi fiscale noi"""
-    if not CLOUD_URL or not req_lib:
-        logger.error("Cloud polling dezactivat - lipseste URL sau requests")
+    if not CLOUD_URL:
+        logger.error("Cloud polling dezactivat - lipseste URL")
         return
     
     logger.info(f"Cloud polling pornit: {CLOUD_URL}")
@@ -1140,28 +1149,28 @@ def poll_cloud_jobs():
         try:
             # Ping - anunta ca bridge-ul e activ
             try:
-                req_lib.post(f"{CLOUD_URL}/api/fiscal/bridge-ping", timeout=5)
+                cloud_post(f"{CLOUD_URL}/api/fiscal/bridge-ping")
             except:
                 pass
             
             # Poll pentru joburi
-            resp = req_lib.get(f"{CLOUD_URL}/api/fiscal/pending", timeout=10)
-            if resp.status_code == 200:
-                data = resp.json()
+            try:
+                data = cloud_get(f"{CLOUD_URL}/api/fiscal/pending")
                 job = data.get("job")
                 if job:
                     logger.info(f"Job primit: {job['job_id']} - {job['type']}")
                     result = execute_fiscal_job(job)
                     # Raporteaza rezultatul
                     try:
-                        req_lib.post(
+                        cloud_post(
                             f"{CLOUD_URL}/api/fiscal/result/{job['job_id']}",
-                            json=result,
-                            timeout=10
+                            result
                         )
                         logger.info(f"Rezultat raportat: {result.get('success')}")
                     except Exception as e:
                         logger.error(f"Eroare raportare rezultat: {e}")
+            except urllib.error.URLError as e:
+                logger.error(f"Eroare conexiune cloud: {e}")
         except Exception as e:
             logger.error(f"Eroare polling: {e}")
         

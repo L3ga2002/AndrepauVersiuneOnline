@@ -7,9 +7,6 @@ echo ============================================
 echo.
 echo Folder curent: %CD%
 echo.
-echo Se instaleaza dependentele...
-python -m pip install flask flask-cors requests >nul 2>&1
-echo.
 echo Pornire bridge cu conexiune la cloud (PWA)...
 echo Pagina test locala: http://localhost:5555/test
 echo.

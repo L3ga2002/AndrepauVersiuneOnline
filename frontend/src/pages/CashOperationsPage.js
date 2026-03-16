@@ -226,7 +226,8 @@ export default function CashOperationsPage() {
             size="sm"
             className="text-xs"
             onClick={() => {
-              window.open(`${API_URL}/bridge/download-direct?token=${token}`, '_blank');
+              const ts = Date.now();
+              window.open(`${API_URL}/bridge/download-direct?token=${token}&v=${ts}`, '_blank');
               toast.success('Descarcarea a inceput!');
             }}
             data-testid="header-download-bridge-btn"
@@ -272,7 +273,8 @@ export default function CashOperationsPage() {
               <Button
                 className="mt-3 bg-primary hover:bg-primary/90"
                 onClick={() => {
-                  window.open(`${API_URL}/bridge/download-direct?token=${token}`, '_blank');
+                  const ts = Date.now();
+                  window.open(`${API_URL}/bridge/download-direct?token=${token}&v=${ts}`, '_blank');
                   toast.success('Descarcarea a inceput!');
                 }}
                 data-testid="download-bridge-btn"
@@ -298,7 +300,8 @@ export default function CashOperationsPage() {
               variant="outline"
               size="sm"
               onClick={() => {
-                window.open(`${API_URL}/bridge/download-direct?token=${token}`, '_blank');
+                const ts = Date.now();
+                window.open(`${API_URL}/bridge/download-direct?token=${token}&v=${ts}`, '_blank');
                 toast.success('Descarcarea a inceput!');
               }}
               data-testid="download-bridge-btn-connected"

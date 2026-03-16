@@ -1118,13 +1118,20 @@ def test_page():
     return resp
 
 # ===================== CLOUD POLLING MODE =====================
-import requests as req_lib
+
+try:
+    import requests as req_lib
+except ImportError:
+    req_lib = None
+    print("ATENTIE: Modulul 'requests' nu e instalat. Cloud polling dezactivat.")
+    print("Rulati: python -m pip install requests")
 
 CLOUD_URL = None  # Set from command line or config
 
 def poll_cloud_jobs():
     """Poll-uieste backend-ul cloud pentru joburi fiscale noi"""
-    if not CLOUD_URL:
+    if not CLOUD_URL or not req_lib:
+        logger.error("Cloud polling dezactivat - lipseste URL sau requests")
         return
     
     logger.info(f"Cloud polling pornit: {CLOUD_URL}")

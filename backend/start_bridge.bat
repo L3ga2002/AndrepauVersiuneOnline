@@ -7,6 +7,9 @@ echo ============================================
 echo.
 echo Folder curent: %CD%
 echo.
+echo Se instaleaza dependentele...
+python -m pip install flask flask-cors requests >nul 2>&1
+echo.
 echo Pornire bridge cu conexiune la cloud (PWA)...
 echo Pagina test locala: http://localhost:5555/test
 echo.
@@ -15,7 +18,6 @@ echo.
 python "%~dp0fiscal_bridge.py" "https://andrepau-fiscal.preview.emergentagent.com"
 if %errorlevel% neq 0 (
     echo.
-    echo EROARE la pornire! Verificati ca Python si requests sunt instalate.
-    echo Rulati intai: install_bridge.bat
+    echo EROARE la pornire!
     pause
 )

@@ -225,30 +225,9 @@ export default function CashOperationsPage() {
             variant="outline" 
             size="sm"
             className="text-xs"
-            onClick={async () => {
-              try {
-                toast.info('Se descarcă...');
-                const resp = await fetch(`${API_URL}/bridge/download`, {
-                  headers: { Authorization: `Bearer ${token}` }
-                });
-                if (!resp.ok) throw new Error('Eroare descărcare');
-                const blob = await resp.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = url;
-                a.download = 'ANDREPAU_Bridge_Service.zip';
-                document.body.appendChild(a);
-                a.click();
-                setTimeout(() => {
-                  document.body.removeChild(a);
-                  window.URL.revokeObjectURL(url);
-                }, 1000);
-                toast.success('Bridge Service descarcat!');
-              } catch (err) {
-                console.error('Download error:', err);
-                toast.error('Eroare la descarcare: ' + err.message);
-              }
+            onClick={() => {
+              window.open(`${API_URL}/bridge/download-direct?token=${token}`, '_blank');
+              toast.success('Descarcarea a inceput!');
             }}
             data-testid="header-download-bridge-btn"
           >
@@ -292,30 +271,9 @@ export default function CashOperationsPage() {
               </ol>
               <Button
                 className="mt-3 bg-primary hover:bg-primary/90"
-                onClick={async () => {
-                  try {
-                    toast.info('Se descarcă...');
-                    const resp = await fetch(`${API_URL}/bridge/download`, {
-                      headers: { Authorization: `Bearer ${token}` }
-                    });
-                    if (!resp.ok) throw new Error('Eroare descărcare');
-                    const blob = await resp.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.style.display = 'none';
-                    a.href = url;
-                    a.download = 'ANDREPAU_Bridge_Service.zip';
-                    document.body.appendChild(a);
-                    a.click();
-                    setTimeout(() => {
-                      document.body.removeChild(a);
-                      window.URL.revokeObjectURL(url);
-                    }, 1000);
-                    toast.success('Bridge Service descarcat!');
-                  } catch (err) {
-                    console.error('Download error:', err);
-                    toast.error('Eroare la descarcare: ' + err.message);
-                  }
+                onClick={() => {
+                  window.open(`${API_URL}/bridge/download-direct?token=${token}`, '_blank');
+                  toast.success('Descarcarea a inceput!');
                 }}
                 data-testid="download-bridge-btn"
               >
@@ -339,23 +297,9 @@ export default function CashOperationsPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={async () => {
-                try {
-                  const resp = await fetch(`${API_URL}/bridge/download`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                  });
-                  if (!resp.ok) throw new Error('Eroare');
-                  const blob = await resp.blob();
-                  const url = window.URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = 'ANDREPAU_Bridge_Service.zip';
-                  a.click();
-                  window.URL.revokeObjectURL(url);
-                  toast.success('Bridge Service descarcat!');
-                } catch {
-                  toast.error('Eroare la descarcare');
-                }
+              onClick={() => {
+                window.open(`${API_URL}/bridge/download-direct?token=${token}`, '_blank');
+                toast.success('Descarcarea a inceput!');
               }}
               data-testid="download-bridge-btn-connected"
             >

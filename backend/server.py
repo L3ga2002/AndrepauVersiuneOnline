@@ -895,21 +895,32 @@ async def update_products_tva(
 @api_router.get("/bridge/download")
 async def download_bridge_zip(user: dict = Depends(get_current_user)):
     """Download Bridge Service as ZIP (fiscal_bridge.py + install + start scripts)"""
+    return _create_bridge_zip()
+
+@api_router.get("/bridge/download-direct")
+async def download_bridge_direct(token: str = None):
+    """Download Bridge Service with token in URL - for direct browser download"""
+    if not token:
+        raise HTTPException(status_code=401, detail="Token necesar")
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except:
+        raise HTTPException(status_code=401, detail="Token invalid")
+    return _create_bridge_zip()
+
+def _create_bridge_zip():
     import zipfile
-    
     bridge_dir = Path(__file__).parent
     files_to_zip = {
         "fiscal_bridge.py": bridge_dir / "fiscal_bridge.py",
         "install_bridge.bat": bridge_dir / "install_bridge.bat",
         "start_bridge.bat": bridge_dir / "start_bridge.bat",
     }
-    
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
         for name, path in files_to_zip.items():
             if path.exists():
                 zf.write(path, name)
-    
     zip_buffer.seek(0)
     return StreamingResponse(
         zip_buffer,

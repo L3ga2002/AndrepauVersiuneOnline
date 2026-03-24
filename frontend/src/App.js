@@ -1,6 +1,10 @@
 import React, { useEffect } from "react";
 import "@/App.css";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { HashRouter, BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+
+// Use HashRouter for Electron (file:// protocol), BrowserRouter for web
+const isElectron = window.electronBridge || window.location.protocol === 'file:';
+const Router = isElectron ? HashRouter : BrowserRouter;
 import { Toaster } from "./components/ui/sonner";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import LoginPage from "./pages/LoginPage";
@@ -162,7 +166,7 @@ function App() {
 
   return (
     <div className="App">
-      <BrowserRouter>
+      <Router>
         <AuthProvider>
           <InitApp />
           <AppRoutes />
@@ -178,7 +182,7 @@ function App() {
             }}
           />
         </AuthProvider>
-      </BrowserRouter>
+      </Router>
     </div>
   );
 }

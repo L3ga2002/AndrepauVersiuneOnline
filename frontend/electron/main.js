@@ -30,8 +30,14 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:3000');
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../build/index.html'));
+    const appPath = app.getAppPath();
+    mainWindow.loadFile(path.join(appPath, 'build', 'index.html'));
   }
+
+  // Show errors in production for debugging
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error('Failed to load:', errorCode, errorDescription);
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;

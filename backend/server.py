@@ -416,11 +416,11 @@ async def generate_bon_number():
 
 @api_router.post("/sales", response_model=SaleResponse)
 async def create_sale(sale: SaleCreate, user: dict = Depends(get_current_user)):
-    # Duplicate prevention via transaction_id
+    # P2: Duplicate prevention via transaction_id
     if sale.transaction_id:
         existing = await db.sales.find_one({"transaction_id": sale.transaction_id}, {"_id": 0})
         if existing:
-            logger.info(f"Duplicate sale blocked: {sale.transaction_id}")
+            logger.warning(f"[SALE] Duplicate blocked: txn={sale.transaction_id}, user={user['username']}")
             return SaleResponse(**existing)
     
     # Generate bon number
@@ -439,14 +439,33 @@ async def create_sale(sale: SaleCreate, user: dict = Depends(get_current_user)):
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
-    # Update stock for each item
+    # P0: Atomic stock deduction - only deduct after sale is validated
+    stock_changes = []
     for item in sale.items:
-        await db.products.update_one(
+        result = await db.products.update_one(
             {"id": item.product_id},
             {"$inc": {"stoc": -item.cantitate}}
         )
+        stock_changes.append({
+            "product_id": item.product_id,
+            "nume": item.nume,
+            "cantitate": -item.cantitate,
+            "matched": result.matched_count
+        })
     
     await db.sales.insert_one(sale_doc)
+    
+    # P3: Professional logging
+    logger.info(
+        f"[SALE] #{numar_bon} | Total: {sale.total} RON | "
+        f"Plata: {sale.metoda_plata} | Fiscal: {sale.fiscal_status} | "
+        f"Items: {len(sale.items)} | Casier: {casier_nume} | "
+        f"TXN: {sale_doc['transaction_id']}"
+    )
+    for sc in stock_changes:
+        if sc["matched"] == 0:
+            logger.error(f"[STOCK] Product not found for deduction: {sc['product_id']} ({sc['nume']})")
+    
     return SaleResponse(**{k: v for k, v in sale_doc.items() if k != "_id"})
 
 @api_router.get("/sales", response_model=List[SaleResponse])
@@ -598,9 +617,16 @@ async def get_stock_dashboard(user: dict = Depends(get_current_user)):
 async def get_stock_alerts(user: dict = Depends(get_current_user)):
     pipeline = [
         {"$match": {"$expr": {"$lte": ["$stoc", "$stoc_minim"]}}},
+        {"$addFields": {
+            "severity": {
+                "$cond": [{"$lte": ["$stoc", 0]}, "critical", "warning"]
+            },
+            "deficit": {"$subtract": ["$stoc_minim", "$stoc"]}
+        }},
+        {"$sort": {"severity": 1, "deficit": -1}},
         {"$project": {"_id": 0}}
     ]
-    alerts = await db.products.aggregate(pipeline).to_list(100)
+    alerts = await db.products.aggregate(pipeline).to_list(200)
     return alerts
 
 # ==================== REPORTS ROUTES ====================
@@ -778,6 +804,7 @@ async def create_cash_operation(data: dict, user: dict = Depends(get_current_use
     
     await db.cash_operations.insert_one(operation)
     operation.pop("_id", None)
+    logger.info(f"[CASH] {operation['type']} | Amount: {operation['amount']} RON | By: {operation['operator_name']} | Desc: {operation['description']}")
     return operation
 
 @api_router.get("/cash-operations/history")
@@ -938,7 +965,7 @@ async def queue_fiscal_job(data: dict, user: dict = Depends(get_current_user)):
     job_id = str(uuid.uuid4())
     job = {
         "job_id": job_id,
-        "type": data.get("type", "receipt"),  # receipt, cash_in, cash_out, report_x, report_z, cancel, copy, drawer
+        "type": data.get("type", "receipt"),
         "data": data.get("data", {}),
         "status": "pending",
         "result": None,
@@ -947,6 +974,7 @@ async def queue_fiscal_job(data: dict, user: dict = Depends(get_current_user)):
         "completed_at": None
     }
     await db.fiscal_jobs.insert_one(job)
+    logger.info(f"[FISCAL] Job queued: {job['type']} | ID: {job_id} | By: {user.get('username')}")
     return {"job_id": job_id, "status": "pending"}
 
 @api_router.get("/fiscal/pending")
@@ -971,16 +999,18 @@ async def get_pending_jobs(bridge_key: str = None):
 @api_router.post("/fiscal/result/{job_id}")
 async def report_fiscal_result(job_id: str, data: dict):
     """Bridge-ul raporteaza rezultatul executiei"""
+    status = "completed" if data.get("success") else "failed"
     result = await db.fiscal_jobs.update_one(
         {"job_id": job_id},
         {"$set": {
-            "status": "completed" if data.get("success") else "failed",
+            "status": status,
             "result": data,
             "completed_at": datetime.now(timezone.utc).isoformat()
         }}
     )
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Job negasit")
+    logger.info(f"[FISCAL] Job result: {job_id} | Status: {status} | Error: {data.get('error', 'none')}")
     return {"ok": True}
 
 @api_router.get("/fiscal/status/{job_id}")

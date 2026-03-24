@@ -544,6 +544,7 @@ export default function POSPage() {
       }
 
       // Step 2: Save sale to backend (only after successful fiscal print or skip)
+      const txId = `TXN-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
       const saleData = {
         items: cart.map(item => ({
           product_id: item.product_id,
@@ -560,6 +561,7 @@ export default function POSPage() {
         suma_numerar: sumaCash,
         suma_card: sumaCard + sumaTichete,
         casier_id: user.id,
+        transaction_id: txId,
         fiscal_number: fiscalResult?.fiscal_number || null,
         fiscal_status: (!skipFiscal && fiscalResult?.success) ? 'printed' : 'none'
       };

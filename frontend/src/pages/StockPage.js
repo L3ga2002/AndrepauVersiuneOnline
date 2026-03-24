@@ -261,7 +261,8 @@ export default function StockPage() {
         <TabsContent value="alerts">
           <Card className="bg-card border-border">
             <CardHeader>
-              <CardTitle className="font-heading text-xl uppercase text-foreground">
+              <CardTitle className="font-heading text-xl uppercase text-foreground flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-yellow-500" />
                 Produse Sub Stoc Minim
               </CardTitle>
             </CardHeader>
@@ -273,44 +274,68 @@ export default function StockPage() {
               ) : alerts.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
                   <Package className="w-12 h-12 mb-2 opacity-50" />
-                  <p>Toate produsele sunt în stoc</p>
+                  <p>Toate produsele sunt in stoc</p>
                 </div>
               ) : (
-                <ScrollArea className="h-[400px]">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="border-border">
-                        <TableHead className="text-muted-foreground">Produs</TableHead>
-                        <TableHead className="text-muted-foreground">Categorie</TableHead>
-                        <TableHead className="text-muted-foreground text-right">Stoc Actual</TableHead>
-                        <TableHead className="text-muted-foreground text-right">Stoc Minim</TableHead>
-                        <TableHead className="text-muted-foreground">Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {alerts.map(product => {
-                        const status = getStockStatus(product.stoc, product.stoc_minim);
-                        return (
-                          <TableRow key={product.id} className="border-border">
-                            <TableCell className="font-medium text-foreground">{product.nume}</TableCell>
-                            <TableCell className="text-muted-foreground">{product.categorie}</TableCell>
-                            <TableCell className={`text-right font-mono ${status.className}`}>
-                              {formatNumber(product.stoc, 1)} {product.unitate}
-                            </TableCell>
-                            <TableCell className="text-right font-mono text-muted-foreground">
-                              {formatNumber(product.stoc_minim, 1)} {product.unitate}
-                            </TableCell>
-                            <TableCell>
-                              <span className={`badge-${status.status === 'critical' ? 'danger' : 'warning'}`}>
-                                {status.label}
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </ScrollArea>
+                <>
+                  {/* Summary bar */}
+                  <div className="flex gap-4 mb-4 p-3 bg-secondary rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-block w-3 h-3 rounded-full bg-red-500"></span>
+                      <span className="text-sm text-foreground font-medium">
+                        {alerts.filter(a => a.severity === 'critical' || a.stoc <= 0).length} fara stoc
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="inline-block w-3 h-3 rounded-full bg-yellow-500"></span>
+                      <span className="text-sm text-foreground font-medium">
+                        {alerts.filter(a => a.severity === 'warning' || (a.stoc > 0 && a.stoc <= a.stoc_minim)).length} stoc scazut
+                      </span>
+                    </div>
+                  </div>
+                  <ScrollArea className="h-[400px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-border">
+                          <TableHead className="text-muted-foreground w-8">!</TableHead>
+                          <TableHead className="text-muted-foreground">Produs</TableHead>
+                          <TableHead className="text-muted-foreground">Categorie</TableHead>
+                          <TableHead className="text-muted-foreground text-right">Stoc Actual</TableHead>
+                          <TableHead className="text-muted-foreground text-right">Stoc Minim</TableHead>
+                          <TableHead className="text-muted-foreground text-right">Deficit</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {alerts.map(product => {
+                          const isCritical = product.stoc <= 0;
+                          const deficit = (product.stoc_minim || 0) - product.stoc;
+                          return (
+                            <TableRow key={product.id} className={`border-border ${isCritical ? 'bg-red-500/5' : ''}`} data-testid={`stock-alert-${product.id}`}>
+                              <TableCell>
+                                {isCritical ? (
+                                  <AlertTriangle className="w-4 h-4 text-red-500" />
+                                ) : (
+                                  <TrendingDown className="w-4 h-4 text-yellow-500" />
+                                )}
+                              </TableCell>
+                              <TableCell className="font-medium text-foreground">{product.nume}</TableCell>
+                              <TableCell className="text-muted-foreground">{product.categorie}</TableCell>
+                              <TableCell className={`text-right font-mono font-bold ${isCritical ? 'text-red-500' : 'text-yellow-500'}`}>
+                                {formatNumber(product.stoc, 1)} {product.unitate}
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-muted-foreground">
+                                {formatNumber(product.stoc_minim, 1)} {product.unitate}
+                              </TableCell>
+                              <TableCell className="text-right font-mono font-bold text-red-400">
+                                -{formatNumber(deficit, 1)}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                </>
               )}
             </CardContent>
           </Card>

@@ -1023,7 +1023,7 @@ async def bridge_ping():
 # ==================== HELD ORDERS (Stock Reservation) ====================
 
 async def expire_old_held_orders():
-    """Expire held orders older than 24 hours and restore stock"""
+    """Expire held orders older than 24 hours - stock STAYS deducted (not restored)"""
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     expired_orders = await db.held_orders.find(
         {"status": "active", "created_at": {"$lt": cutoff}},
@@ -1031,18 +1031,14 @@ async def expire_old_held_orders():
     ).to_list(100)
     
     for order in expired_orders:
-        for item in order.get("items", []):
-            await db.products.update_one(
-                {"id": item["product_id"]},
-                {"$inc": {"stoc": item["cantitate"]}}
-            )
+        # Stock remains deducted - products are considered gone/sold
         await db.held_orders.update_one(
             {"id": order["id"]},
             {"$set": {"status": "expired", "expired_at": datetime.now(timezone.utc).isoformat()}}
         )
     
     if expired_orders:
-        logger.info(f"Expired {len(expired_orders)} held orders, stock restored")
+        logger.info(f"Expired {len(expired_orders)} held orders, stock remains deducted")
 
 @api_router.post("/held-orders")
 async def create_held_order(data: dict, user: dict = Depends(get_current_user)):

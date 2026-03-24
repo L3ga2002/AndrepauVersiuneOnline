@@ -198,6 +198,24 @@ export default function POSPage() {
       const timeDiff = currentTime - lastKeyTime;
       lastKeyTime = currentTime;
 
+      // Keyboard shortcuts: F7=Card, F9=Numerar, F11=Anulare
+      if (e.key === 'F9') {
+        e.preventDefault();
+        if (cart.length > 0 && !fiscalLoading) handlePayment('numerar');
+        return;
+      }
+      if (e.key === 'F7') {
+        e.preventDefault();
+        if (cart.length > 0 && !fiscalLoading) handlePayment('card');
+        return;
+      }
+      if (e.key === 'F11') {
+        e.preventDefault();
+        clearCart();
+        toast.info('Coș golit');
+        return;
+      }
+
       // Skip if in modal inputs
       const activeEl = document.activeElement;
       const isInModal = activeEl.closest('[role="dialog"]');
@@ -423,10 +441,9 @@ export default function POSPage() {
         const sale = await response.json();
         setLastSale(sale);
         setShowCombinedPayment(false);
-        setShowReceipt(true);
         clearCart();
         fetchProducts();
-        toast.success('Vânzare finalizată cu succes');
+        toast.success('Bon printat!');
       } else {
         const error = await response.json();
         toast.error(error.detail || 'Eroare la procesarea vânzării');

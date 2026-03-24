@@ -5,7 +5,7 @@ import { Input } from '../components/ui/input';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { formatCurrency, formatNumber } from '../lib/utils';
-import { Search, Barcode, X, Plus, Minus, Trash2, CreditCard, Banknote, Percent, Receipt, PauseCircle, FileText, Ticket, Clock, Loader2, CheckCircle, Building2, Split, Database, Wifi, WifiOff, Printer } from 'lucide-react';
+import { Search, Barcode, X, Plus, Minus, Trash2, CreditCard, Banknote, Percent, Receipt, PauseCircle, FileText, Ticket, Clock, Loader2, CheckCircle, Building2, Split, Database, Wifi, WifiOff, XCircle, WifiIcon } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function POSPage() {
@@ -24,10 +24,6 @@ export default function POSPage() {
   const [cardAmount, setCardAmount] = useState('');
   const [ticketAmount, setTicketAmount] = useState('');
   
-  // Receipt modal
-  const [showReceipt, setShowReceipt] = useState(false);
-  const [lastSale, setLastSale] = useState(null);
-  
   // Quantity edit modal
   const [editingItem, setEditingItem] = useState(null);
   const [editQuantity, setEditQuantity] = useState('');
@@ -37,7 +33,7 @@ export default function POSPage() {
   const [showDiscount, setShowDiscount] = useState(false);
   const [discountInput, setDiscountInput] = useState('');
   
-  // Hold/Pending orders
+  // Hold/Pending orders (backend-managed with stock reservation)
   const [holdOrders, setHoldOrders] = useState([]);
   const [showHoldOrders, setShowHoldOrders] = useState(false);
   
@@ -51,6 +47,9 @@ export default function POSPage() {
   const [fiscalLoading, setFiscalLoading] = useState(false);
   const [showNoBridgeConfirm, setShowNoBridgeConfirm] = useState(false);
   const [pendingPaymentMethod, setPendingPaymentMethod] = useState(null);
+
+  // Offline mode
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
   const searchRef = useRef(null);
 
@@ -76,6 +75,70 @@ export default function POSPage() {
     const interval = setInterval(checkBridge, 15000);
     return () => clearInterval(interval);
   }, [checkBridge]);
+
+  // Offline detection
+  useEffect(() => {
+    const goOnline = () => {
+      setIsOffline(false);
+      toast.success('Conexiune restabilita - sincronizare...');
+      syncOfflineSales();
+    };
+    const goOffline = () => {
+      setIsOffline(true);
+      toast.warning('Mod Offline activat');
+    };
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
+
+  // Sync offline sales when back online
+  const syncOfflineSales = async () => {
+    const queue = JSON.parse(localStorage.getItem('andrepau_offline_sales') || '[]');
+    if (queue.length === 0) return;
+    let synced = 0;
+    for (const sale of queue) {
+      try {
+        const resp = await fetch(`${API_URL}/sales`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(sale)
+        });
+        if (resp.ok) synced++;
+        else break;
+      } catch { break; }
+    }
+    if (synced > 0) {
+      const remaining = queue.slice(synced);
+      localStorage.setItem('andrepau_offline_sales', JSON.stringify(remaining));
+      toast.success(`${synced} vanzari offline sincronizate`);
+      fetchProducts();
+    }
+  };
+
+  // Fetch held orders from backend
+  const fetchHeldOrders = useCallback(async () => {
+    try {
+      const resp = await fetch(`${API_URL}/held-orders`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        setHoldOrders(data.orders || []);
+      }
+    } catch (err) {
+      console.error('Error fetching held orders:', err);
+    }
+  }, [API_URL, token]);
+
+  useEffect(() => {
+    fetchHeldOrders();
+    const interval = setInterval(fetchHeldOrders, 30000);
+    return () => clearInterval(interval);
+  }, [fetchHeldOrders]);
 
   // Send fiscal command via cloud queue and wait for result
   const callBridgeCloud = async (jobType, data = {}) => {
@@ -151,8 +214,29 @@ export default function POSPage() {
       });
       const data = await response.json();
       setProducts(data.products || []);
+      // Cache for offline use
+      if (!searchQuery && !selectedCategory) {
+        localStorage.setItem('andrepau_products_cache', JSON.stringify(data.products || []));
+      }
     } catch (error) {
       console.error('Error fetching products:', error);
+      // Offline fallback - use cached products
+      if (!navigator.onLine) {
+        const cached = localStorage.getItem('andrepau_products_cache');
+        if (cached) {
+          let cachedProducts = JSON.parse(cached);
+          if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            cachedProducts = cachedProducts.filter(p => 
+              p.nume.toLowerCase().includes(q) || (p.cod_bare && p.cod_bare.includes(q))
+            );
+          }
+          if (selectedCategory) {
+            cachedProducts = cachedProducts.filter(p => p.categorie === selectedCategory);
+          }
+          setProducts(cachedProducts);
+        }
+      }
     }
   }, [API_URL, token, searchQuery, selectedCategory]);
 
@@ -315,32 +399,84 @@ export default function POSPage() {
     setDiscount(0);
   };
 
-  // Hold current order
-  const holdOrder = () => {
+  // Hold current order - saves to backend and reserves stock
+  const holdOrder = async () => {
     if (cart.length === 0) {
-      toast.error('Coșul este gol');
+      toast.error('Cosul este gol');
       return;
     }
-    const holdOrder = {
-      id: Date.now(),
-      items: [...cart],
-      discount: discount,
-      time: new Date().toLocaleTimeString('ro-RO')
-    };
-    setHoldOrders(prev => [...prev, holdOrder]);
-    clearCart();
-    toast.success('Comandă pusă în așteptare');
+    try {
+      const resp = await fetch(`${API_URL}/held-orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          items: cart.map(item => ({
+            product_id: item.product_id,
+            nume: item.nume,
+            cantitate: item.cantitate,
+            pret_unitar: item.pret_unitar,
+            tva: item.tva,
+            unitate: item.unitate || 'buc'
+          })),
+          discount: discount
+        })
+      });
+      if (resp.ok) {
+        clearCart();
+        fetchHeldOrders();
+        fetchProducts();
+        toast.success('Comanda pusa in asteptare - stoc rezervat');
+      } else {
+        const err = await resp.json();
+        toast.error(err.detail || 'Eroare la salvare');
+      }
+    } catch (error) {
+      toast.error('Eroare la salvare comanda');
+    }
   };
 
-  // Restore held order
-  const restoreOrder = (orderId) => {
-    const order = holdOrders.find(o => o.id === orderId);
-    if (order) {
-      setCart(order.items);
-      setDiscount(order.discount);
-      setHoldOrders(prev => prev.filter(o => o.id !== orderId));
-      setShowHoldOrders(false);
-      toast.success('Comandă restaurată');
+  // Restore held order - restores stock and loads items into cart
+  const restoreOrder = async (orderId) => {
+    try {
+      const resp = await fetch(`${API_URL}/held-orders/${orderId}/restore`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (resp.ok) {
+        const order = await resp.json();
+        setCart(order.items.map(item => ({
+          ...item,
+          stoc_disponibil: 999
+        })));
+        setDiscount(order.discount || 0);
+        setShowHoldOrders(false);
+        fetchHeldOrders();
+        fetchProducts();
+        toast.success('Comanda restaurata');
+      } else {
+        toast.error('Comanda a expirat sau nu mai exista');
+        fetchHeldOrders();
+      }
+    } catch (error) {
+      toast.error('Eroare la restaurare');
+    }
+  };
+
+  // Cancel held order - restores stock without loading into cart
+  const cancelHeldOrder = async (orderId, e) => {
+    e.stopPropagation();
+    try {
+      const resp = await fetch(`${API_URL}/held-orders/${orderId}/cancel`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (resp.ok) {
+        fetchHeldOrders();
+        fetchProducts();
+        toast.success('Comanda anulata, stoc restaurat');
+      }
+    } catch (error) {
+      toast.error('Eroare la anulare');
     }
   };
 
@@ -439,25 +575,47 @@ export default function POSPage() {
 
       if (response.ok) {
         const sale = await response.json();
-        setLastSale(sale);
         setShowCombinedPayment(false);
         clearCart();
         fetchProducts();
-        toast.success('Bon printat!');
+        toast.success(`Vanzare #${sale.numar_bon} inregistrata!`);
       } else {
         const error = await response.json();
         toast.error(error.detail || 'Eroare la procesarea vânzării');
       }
     } catch (error) {
       console.error('Payment error:', error);
-      toast.error('Eroare la procesarea plății');
+      // Offline fallback - queue sale
+      if (!navigator.onLine) {
+        const offlineSale = {
+          items: cart.map(item => ({
+            product_id: item.product_id,
+            nume: item.nume,
+            cantitate: item.cantitate,
+            pret_unitar: item.pret_unitar,
+            tva: item.tva
+          })),
+          subtotal, tva_total: tvaTotal, total,
+          discount_percent: discount,
+          metoda_plata: method,
+          suma_numerar: sumaCash,
+          suma_card: sumaCard + sumaTichete,
+          casier_id: user.id,
+          fiscal_status: 'none',
+          transaction_id: `OFFLINE-${Date.now()}`
+        };
+        const queue = JSON.parse(localStorage.getItem('andrepau_offline_sales') || '[]');
+        queue.push(offlineSale);
+        localStorage.setItem('andrepau_offline_sales', JSON.stringify(queue));
+        setShowCombinedPayment(false);
+        clearCart();
+        toast.info('Vanzare salvata offline - se va sincroniza automat');
+      } else {
+        toast.error('Eroare la procesarea plații');
+      }
     } finally {
       setFiscalLoading(false);
     }
-  };
-
-  const printReceipt = () => {
-    window.print();
   };
 
   const applyDiscount = () => {
@@ -619,7 +777,16 @@ export default function POSPage() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background" data-testid="pos-page">
+    <div className="flex flex-col h-screen overflow-hidden bg-background" data-testid="pos-page">
+      {/* Offline Banner */}
+      {isOffline && (
+        <div className="bg-yellow-600 text-white text-center py-2 text-sm font-medium flex items-center justify-center gap-2 shrink-0" data-testid="offline-banner">
+          <WifiOff className="w-4 h-4" />
+          Mod Offline - Vanzarile se salveaza local si se sincronizeaza automat
+        </div>
+      )}
+
+      <div className="flex flex-1 overflow-hidden">
       {/* Left Panel - Products */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         {/* Search & Categories */}
@@ -686,16 +853,20 @@ export default function POSPage() {
                   data-testid={`product-${product.id}`}
                   onClick={() => addToCart(product)}
                   className="bg-card border border-border rounded p-3 text-left hover:border-primary hover:bg-card/80 transition-all active:scale-95"
+                  title={product.nume}
                 >
-                  <p className="text-sm font-medium text-foreground line-clamp-2 min-h-[40px] leading-tight">
+                  <p className="text-sm font-medium text-foreground line-clamp-3 min-h-[54px] leading-tight">
                     {product.nume}
                   </p>
                   <p className="text-lg font-bold text-primary mt-1">
                     {formatCurrency(product.pret_vanzare)}
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    {product.unitate}
-                  </p>
+                  <div className="flex justify-between items-center mt-0.5">
+                    <span className="text-xs text-muted-foreground">{product.unitate}</span>
+                    <span className={`text-xs font-medium ${product.stoc <= (product.stoc_minim || 5) ? 'text-red-500' : 'text-muted-foreground'}`}>
+                      stoc: {formatNumber(product.stoc, product.unitate === 'buc' ? 0 : 1)}
+                    </span>
+                  </div>
                 </button>
               ))}
             </div>
@@ -860,25 +1031,27 @@ export default function POSPage() {
             {bridgeConnected ? 'Casa conectata' : 'Casa deconectata'}
           </div>
 
-          {/* Payment Buttons - Big like ForIT */}
+          {/* Payment Buttons */}
           <div className="grid grid-cols-2 gap-2">
             <Button
               onClick={() => handlePayment('numerar')}
               disabled={cart.length === 0 || fiscalLoading}
-              className="h-14 text-lg font-bold bg-green-600 hover:bg-green-700 text-white"
+              className="h-14 text-lg font-bold bg-green-600 hover:bg-green-700 text-white relative"
               data-testid="pay-cash-btn"
             >
               {fiscalLoading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Banknote className="w-5 h-5 mr-2" />}
               NUMERAR
+              <span className="absolute top-1 right-2 text-[10px] opacity-60">F9</span>
             </Button>
             <Button
               onClick={() => handlePayment('card')}
               disabled={cart.length === 0 || fiscalLoading}
-              className="h-14 text-lg font-bold bg-blue-600 hover:bg-blue-700 text-white"
+              className="h-14 text-lg font-bold bg-blue-600 hover:bg-blue-700 text-white relative"
               data-testid="pay-card-btn"
             >
               {fiscalLoading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <CreditCard className="w-5 h-5 mr-2" />}
               CARD
+              <span className="absolute top-1 right-2 text-[10px] opacity-60">F7</span>
             </Button>
           </div>
           
@@ -903,63 +1076,15 @@ export default function POSPage() {
               variant="destructive"
               onClick={clearCart}
               disabled={cart.length === 0}
-              className="h-12 font-bold"
+              className="h-12 font-bold relative"
             >
               <X className="w-4 h-4 mr-1" />
-              ANULEAZĂ
+              ANULEAZA
+              <span className="absolute top-0.5 right-1.5 text-[9px] opacity-60">F11</span>
             </Button>
           </div>
         </div>
       </div>
-
-      {/* Receipt Modal */}
-      <Dialog open={showReceipt} onOpenChange={setShowReceipt}>
-        <DialogContent className="bg-card border-border max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-center text-foreground">BON FISCAL</DialogTitle>
-          </DialogHeader>
-
-          {lastSale && (
-            <div className="font-mono text-sm p-4 bg-background rounded receipt-printable">
-              <div className="text-center border-b border-dashed border-border pb-3 mb-3">
-                <h3 className="font-bold text-lg">ANDREPAU</h3>
-                <p className="text-xs text-muted-foreground">Materiale Construcții</p>
-                <p className="text-xs text-muted-foreground mt-2">
-                  {new Date(lastSale.created_at).toLocaleString('ro-RO')}
-                </p>
-                <p className="text-xs">Nr: {lastSale.numar_bon}</p>
-              </div>
-
-              <div className="space-y-1 text-xs">
-                {lastSale.items.map((item, idx) => (
-                  <div key={idx} className="flex justify-between">
-                    <span className="flex-1 truncate">{item.nume}</span>
-                    <span className="ml-2">{formatNumber(item.cantitate)} x {formatCurrency(item.pret_unitar)}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="border-t border-dashed border-border mt-3 pt-3 text-sm">
-                <div className="flex justify-between font-bold text-lg">
-                  <span>TOTAL:</span>
-                  <span className="text-primary">{formatCurrency(lastSale.total)}</span>
-                </div>
-                <p className="text-center text-xs text-muted-foreground mt-3">
-                  Plată: {lastSale.metoda_plata.toUpperCase()} | Casier: {lastSale.casier_nume}
-                </p>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setShowReceipt(false)}>Închide</Button>
-            <Button onClick={printReceipt} className="bg-primary">
-              <Receipt className="w-4 h-4 mr-2" />
-              Print
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Discount Modal */}
       <Dialog open={showDiscount} onOpenChange={setShowDiscount}>
@@ -1022,45 +1147,80 @@ export default function POSPage() {
 
       {/* Hold Orders Modal */}
       <Dialog open={showHoldOrders} onOpenChange={setShowHoldOrders}>
-        <DialogContent className="bg-card border-border">
+        <DialogContent className="bg-card border-border max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-foreground flex items-center gap-2">
               <Clock className="w-5 h-5 text-yellow-500" />
-              Comenzi în Așteptare ({holdOrders.length})
+              Comenzi in Asteptare ({holdOrders.length})
             </DialogTitle>
           </DialogHeader>
           {holdOrders.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
               <Clock className="w-12 h-12 mb-2 opacity-50" />
-              <p>Nu există comenzi în așteptare</p>
+              <p>Nu exista comenzi in asteptare</p>
             </div>
           ) : (
-            <div className="space-y-2 max-h-64 overflow-auto">
-              {holdOrders.map(order => (
-                <button
-                  key={order.id}
-                  onClick={() => restoreOrder(order.id)}
-                  className="w-full p-4 bg-secondary rounded-lg text-left hover:bg-secondary/80 border border-border transition-colors"
-                >
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="font-medium text-foreground">{order.items.length} produse</span>
-                    <span className="text-muted-foreground text-sm">{order.time}</span>
+            <div className="space-y-2 max-h-80 overflow-auto">
+              {holdOrders.map(order => {
+                const orderTotal = order.items.reduce((s, i) => s + i.cantitate * i.pret_unitar, 0);
+                const createdAt = new Date(order.created_at);
+                const expiresAt = new Date(order.expires_at);
+                const hoursLeft = Math.max(0, Math.round((expiresAt - Date.now()) / 3600000));
+                return (
+                  <div
+                    key={order.id}
+                    className="p-4 bg-secondary rounded-lg border border-border transition-colors"
+                    data-testid={`held-order-${order.id}`}
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="font-medium text-foreground">{order.items.length} produse</span>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${hoursLeft <= 2 ? 'bg-red-500/20 text-red-500' : 'bg-yellow-500/20 text-yellow-500'}`}>
+                          {hoursLeft}h ramase
+                        </span>
+                        <span className="text-muted-foreground text-xs">
+                          {createdAt.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-sm text-muted-foreground mb-2">
+                      {order.items.map(i => i.nume).slice(0, 3).join(', ')}
+                      {order.items.length > 3 && ` (+${order.items.length - 3})`}
+                    </div>
+                    {order.created_by_name && (
+                      <p className="text-xs text-muted-foreground mb-2">De: {order.created_by_name}</p>
+                    )}
+                    <div className="flex justify-between items-center">
+                      <span className="text-lg font-bold text-primary">{formatCurrency(orderTotal)}</span>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-red-500 border-red-500/30 hover:bg-red-500/10"
+                          onClick={(e) => cancelHeldOrder(order.id, e)}
+                          data-testid={`cancel-held-${order.id}`}
+                        >
+                          <XCircle className="w-4 h-4 mr-1" />
+                          Anuleaza
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="h-8 bg-primary"
+                          onClick={() => restoreOrder(order.id)}
+                          data-testid={`restore-held-${order.id}`}
+                        >
+                          <Receipt className="w-4 h-4 mr-1" />
+                          Restaureaza
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">
-                      {order.items.map(i => i.nume).slice(0, 2).join(', ')}
-                      {order.items.length > 2 && '...'}
-                    </span>
-                    <span className="text-lg font-bold text-primary">
-                      {formatCurrency(order.items.reduce((s, i) => s + i.cantitate * i.pret_unitar, 0))}
-                    </span>
-                  </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowHoldOrders(false)}>Închide</Button>
+            <Button variant="outline" onClick={() => setShowHoldOrders(false)}>Inchide</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1335,6 +1495,7 @@ export default function POSPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }

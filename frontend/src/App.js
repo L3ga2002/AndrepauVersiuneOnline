@@ -18,9 +18,9 @@ import axios from "axios";
 
 const API_URL = process.env.REACT_APP_BACKEND_URL + '/api';
 
-// Register service worker for PWA
+// Register service worker for PWA (skip in Electron)
 const registerServiceWorker = () => {
-  if ('serviceWorker' in navigator) {
+  if ('serviceWorker' in navigator && !window.electronBridge && window.location.protocol !== 'file:') {
     window.addEventListener('load', () => {
       navigator.serviceWorker
         .register('/service-worker.js')

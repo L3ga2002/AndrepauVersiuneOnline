@@ -31,7 +31,11 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   } else {
     const appPath = app.getAppPath();
-    mainWindow.loadFile(path.join(appPath, 'build', 'index.html'));
+    const indexPath = path.join(appPath, 'build', 'index.html');
+    console.log('Loading from:', indexPath);
+    mainWindow.loadFile(indexPath);
+    // Temporary: open DevTools to debug black screen
+    mainWindow.webContents.openDevTools();
   }
 
   // Show errors in production for debugging

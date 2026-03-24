@@ -15,12 +15,14 @@ import {
   X,
   AlertTriangle,
   Wrench,
-  Calculator
+  Calculator,
+  LayoutDashboard
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 const navigation = [
-  { name: 'POS / Vânzare', href: '/pos', icon: ShoppingCart, roles: ['admin', 'casier'] },
+  { name: 'Deschidere Zi', href: '/start-day', icon: LayoutDashboard, roles: ['admin', 'casier'] },
+  { name: 'POS / Vanzare', href: '/pos', icon: ShoppingCart, roles: ['admin', 'casier'] },
   { name: 'Produse', href: '/products', icon: Package, roles: ['admin', 'casier'] },
   { name: 'Stoc & Inventar', href: '/stock', icon: Archive, roles: ['admin', 'casier'] },
   { name: 'Rapoarte', href: '/reports', icon: BarChart3, roles: ['admin', 'casier'] },

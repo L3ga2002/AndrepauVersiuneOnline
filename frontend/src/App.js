@@ -11,6 +11,7 @@ import ReportsPage from "./pages/ReportsPage";
 import SuppliersPage from "./pages/SuppliersPage";
 import SettingsPage from "./pages/SettingsPage";
 import CashOperationsPage from "./pages/CashOperationsPage";
+import StartDayPage from "./pages/StartDayPage";
 import Layout from "./components/Layout";
 import PWAInstallPrompt from "./components/PWAInstallPrompt";
 import axios from "axios";
@@ -88,7 +89,7 @@ const AuthRedirect = ({ children }) => {
   }
   
   if (user) {
-    return <Navigate to="/pos" replace />;
+    return <Navigate to="/start-day" replace />;
   }
   
   return children;
@@ -126,7 +127,8 @@ function AppRoutes() {
           <Layout />
         </ProtectedRoute>
       }>
-        <Route index element={<Navigate to="/pos" replace />} />
+        <Route index element={<Navigate to="/start-day" replace />} />
+        <Route path="start-day" element={<StartDayPage />} />
         <Route path="pos" element={<POSPage />} />
         <Route path="products" element={<ProductsPage />} />
         <Route path="stock" element={<StockPage />} />

@@ -879,6 +879,69 @@ async def get_daily_cash_stats(user: dict = Depends(get_current_user)):
         "receiptsCount": receipts_count
     }
 
+@api_router.get("/daily/opening-summary")
+async def get_opening_summary(user: dict = Depends(get_current_user)):
+    """Dashboard deschidere zi - summary complet"""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # Cash balance from today's operations
+    cash_ops = await db.cash_operations.aggregate([
+        {"$match": {"date_str": today}},
+        {"$group": {"_id": "$type", "total": {"$sum": "$amount"}}}
+    ]).to_list(10)
+    cash_in = sum(op["total"] for op in cash_ops if op["_id"] == "CASH_IN")
+    cash_out = sum(op["total"] for op in cash_ops if op["_id"] == "CASH_OUT")
+    
+    # Today's cash sales
+    cash_sales = await db.sales.aggregate([
+        {"$match": {"created_at": {"$gte": today_start.isoformat()}, "metoda_plata": {"$in": ["numerar", "cash"]}}},
+        {"$group": {"_id": None, "total": {"$sum": "$total"}, "count": {"$sum": 1}}}
+    ]).to_list(1)
+    cash_from_sales = cash_sales[0]["total"] if cash_sales else 0
+    sales_count = cash_sales[0]["count"] if cash_sales else 0
+    
+    # Total sales today (all methods)
+    all_sales = await db.sales.aggregate([
+        {"$match": {"created_at": {"$gte": today_start.isoformat()}}},
+        {"$group": {"_id": None, "total": {"$sum": "$total"}, "count": {"$sum": 1}}}
+    ]).to_list(1)
+    total_sales = all_sales[0]["total"] if all_sales else 0
+    total_sales_count = all_sales[0]["count"] if all_sales else 0
+    
+    # Cash register balance estimate
+    sold_casa = cash_in - cash_out + cash_from_sales
+    
+    # Bridge status
+    last_poll = await db.fiscal_bridge_status.find_one({"key": "last_poll"}, {"_id": 0})
+    bridge_connected = False
+    if last_poll:
+        last_time = datetime.fromisoformat(last_poll["timestamp"])
+        bridge_connected = (datetime.now(timezone.utc) - last_time).total_seconds() < 30
+    
+    # Held orders
+    await expire_old_held_orders()
+    held_count = await db.held_orders.count_documents({"status": "active"})
+    
+    # Stock alerts count
+    alert_count = await db.products.count_documents({"$expr": {"$lte": ["$stoc", "$stoc_minim"]}})
+    out_of_stock = await db.products.count_documents({"stoc": {"$lte": 0}})
+    
+    return {
+        "data": today,
+        "sold_casa": round(sold_casa, 2),
+        "cash_in": round(cash_in, 2),
+        "cash_out": round(cash_out, 2),
+        "vanzari_numerar": round(cash_from_sales, 2),
+        "total_vanzari": round(total_sales, 2),
+        "numar_vanzari": total_sales_count,
+        "bridge_connected": bridge_connected,
+        "comenzi_hold": held_count,
+        "alerte_stoc": alert_count,
+        "fara_stoc": out_of_stock,
+        "ora": datetime.now(timezone.utc).strftime("%H:%M")
+    }
+
 
 # ==================== TVA MANAGEMENT ====================
 

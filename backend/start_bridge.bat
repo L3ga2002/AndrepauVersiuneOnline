@@ -12,7 +12,7 @@ echo Pagina test locala: http://localhost:5555/test
 echo.
 echo Asigurati-va ca SuccesDrv are "Start procesare" apasat!
 echo.
-python "%~dp0fiscal_bridge.py" "https://andrepau-fiscal.preview.emergentagent.com"
+python "%~dp0fiscal_bridge.py" "https://andrepau-pos-1.preview.emergentagent.com"
 if %errorlevel% neq 0 (
     echo.
     echo EROARE la pornire!

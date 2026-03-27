@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
 ANDREPAU POS - Bridge Service pentru SuccesDrv (INCOTEX Succes M7)
-Versiunea 3.0 - Bazat pe Manual utilizare SuccesDRV 8.5 (2023)
+Versiunea 3.2 PRODUCTIE - Bazat pe Manual utilizare SuccesDRV 8.5 (2023)
+
+NOTA: Butoanele de bon test si comanda manuala au fost ELIMINATE.
+Bonuri fiscale se trimit DOAR prin aplicatia POS sau cloud queue.
 
 Comunicare bazata pe fisiere:
   - Scrie comenzi in ONLINE.TXT
@@ -704,25 +707,9 @@ def get_status():
     except Exception as e:
         return jsonify({'connected': False, 'status': 'ERROR', 'message': str(e)})
 
-# ---------- COMANDA MANUALA ----------
-
-@app.route('/fiscal/test-command', methods=['POST'])
-def test_command():
-    """Trimite o comanda personalizata la SuccesDrv (pentru testare)"""
-    try:
-        data = request.json
-        raw_command = data.get('command', '').strip()
-        if not raw_command:
-            return jsonify({'success': False, 'message': 'Comanda goala'}), 400
-
-        lines = raw_command.replace('\\n', '\n').split('\n')
-        lines = [l.strip() for l in lines if l.strip()]
-
-        result = write_command(lines)
-        log_transaction('TEST_COMMAND', {'command': raw_command}, result)
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
+# ---------- COMANDA MANUALA - DEZACTIVATA (PRODUCTIE) ----------
+# Endpoint-ul /fiscal/test-command a fost eliminat pentru siguranta.
+# Comenzile se trimit doar prin aplicatia POS sau cloud queue.
 
 # ---------- LOGGING ----------
 
@@ -761,7 +748,7 @@ TEST_PAGE_HTML = """<!DOCTYPE html>
 <html lang="ro">
 <head>
     <meta charset="UTF-8">
-    <title>ANDREPAU - Test Casa de Marcat v3.0</title>
+    <title>ANDREPAU - Panou Control Casa de Marcat</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0a0b; color: #e5e5e5; min-height: 100vh; }
@@ -811,8 +798,8 @@ TEST_PAGE_HTML = """<!DOCTYPE html>
 </head>
 <body>
     <div class="header">
-        <h1>ANDREPAU - Test Casa de Marcat</h1>
-        <div class="sub">Bridge Service v3.0 | INCOTEX Succes M7 via SuccesDrv | Format comenzi: Manual SuccesDRV 8.5</div>
+        <h1>ANDREPAU - Panou Control Casa de Marcat</h1>
+        <div class="sub">Bridge Service v3.2 PRODUCTIE | INCOTEX Succes M7 via SuccesDrv</div>
     </div>
     <div class="container">
         <div class="status-bar">
@@ -899,46 +886,10 @@ TEST_PAGE_HTML = """<!DOCTYPE html>
         </div>
 
         <div class="section">
-            <div class="section-title">Test Bon Fiscal</div>
+            <div class="section-title">Utilitare</div>
             <div class="section-body">
-                <div class="info-box">
-                    <strong>Format articol:</strong> <code>1;Denumire;UM;CotaTVA;Pret_bani;Cantitate</code><br>
-                    <strong>Preturi:</strong> in BANI (x100). Ex: 35.50 RON = <code>3550</code><br>
-                    <strong>Cantitati:</strong> cu punct zecimal. Ex: 2.5 = <code>2.5</code><br>
-                    <strong>UM:</strong> 1=fara, 2=Buc, 3=Kg, 4=m, 5=L, 6=mp, 7=bax, 8=mc<br>
-                    <strong>TVA:</strong> 1=A(21%), 2=B(11%), 3=C(0%), 4=D(9%), 7=Scutit, 8=Alte taxe<br>
-                    <strong>Plata:</strong> <code>5;suma_bani;1(numerar);1;0</code> | CARD: <code>5;;2;1;0</code> (fara suma!)
-                </div>
                 <div class="btn-grid">
-                    <button class="btn btn-green" onclick="testReceiptCash()">Bon Test (Numerar)</button>
-                    <button class="btn btn-blue" onclick="testReceiptCard()">Bon Test (Card)</button>
-                    <button class="btn btn-blue" onclick="testReceiptCUI()">Bon Test cu CUI</button>
-                    <button class="btn btn-orange" onclick="testReceiptMultiQty()">Bon Test (Cantitati)</button>
                     <button class="btn btn-red" onclick="cancelReceipt()">Anuleaza Bon Curent</button>
-                </div>
-            </div>
-        </div>
-
-        <div class="section" style="border-color: #f59e0b;">
-            <div class="section-title" style="color: #f59e0b;">Comanda Manuala (Avansat)</div>
-            <div class="section-body">
-                <div class="info-box">
-                    Trimite comenzi direct la SuccesDrv. Fiecare linie = o comanda. NU adauga COM1.<br>
-                    Exemple rapide: <code>30</code> (Raport X) | <code>15</code> (Raport Z) | <code>14</code> (Anulare) | <code>67</code> (Totaluri) | <code>106</code> (Sertar)
-                </div>
-                <div class="input-group">
-                    <label>Comenzi:</label>
-                    <textarea id="customCmd" rows="4" placeholder="Ex:&#10;0;1;0;1&#10;1;Test Produs;2;1;500;1&#10;5;500;1;1;0"></textarea>
-                </div>
-                <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                    <button class="btn btn-orange" onclick="sendCustomCommand()">Trimite Comenzi</button>
-                    <button class="btn btn-gray" onclick="setCmd('30')">Raport X</button>
-                    <button class="btn btn-gray" onclick="setCmd('15')">Raport Z</button>
-                    <button class="btn btn-gray" onclick="setCmd('14')">Anulare</button>
-                    <button class="btn btn-gray" onclick="setCmd('67')">Totaluri</button>
-                    <button class="btn btn-gray" onclick="setCmd('106')">Sertar</button>
-                    <button class="btn btn-gray" onclick="setCmd('61')">Cote TVA</button>
-                    <button class="btn btn-gray" onclick="setCmd('46')">Copie Bon</button>
                 </div>
             </div>
         </div>
@@ -970,8 +921,6 @@ TEST_PAGE_HTML = """<!DOCTYPE html>
             el.querySelector('.value').textContent = text;
             el.className = 'status-item ' + (ok ? 'status-ok' : 'status-err');
         }
-        function setCmd(cmd) { document.getElementById('customCmd').value = cmd; }
-
         async function api(method, url, body=null) {
             try {
                 const opts = { method, headers: {'Content-Type':'application/json'} };
@@ -1058,52 +1007,6 @@ TEST_PAGE_HTML = """<!DOCTYPE html>
         async function cancelReceipt() {
             log('Anulare bon curent (comanda 14)...');
             showResult('Anulare', await api('POST', '/fiscal/cancel'));
-        }
-
-        async function testReceiptCash() {
-            log('BON TEST: 1 x Colier 1 RON, plata numerar...');
-            log('  Comanda: 0;1;0;1 / 1;Colier metalic 20mm;2;1;100;1 / 5;100;1;1;0');
-            showResult('Bon numerar', await api('POST', '/fiscal/receipt', {
-                items: [
-                    { name: 'Colier metalic 20mm', quantity: 1, price: 1.00, vat: 21, um: 'buc' }
-                ],
-                payment: { method: 'cash', total: 1.00 }
-            }));
-        }
-
-        async function testReceiptCard() {
-            log('BON TEST: 1 x Colier 1 RON, plata CARD...');
-            log('  Comanda: 0;1;0;1 / 1;Colier metalic 20mm;2;1;100;1 / 5;;2;1;0');
-            showResult('Bon card', await api('POST', '/fiscal/receipt', {
-                items: [{ name: 'Colier metalic 20mm', quantity: 1, price: 1.00, vat: 21, um: 'buc' }],
-                payment: { method: 'card', total: 1.00 }
-            }));
-        }
-
-        async function testReceiptCUI() {
-            log('BON TEST: 1 x Colier 1 RON cu CUI...');
-            showResult('Bon CUI', await api('POST', '/fiscal/receipt', {
-                client: { cui: 'RO4381714', nume: 'FIRMA TEST SRL', adresa: 'Bucuresti' },
-                items: [{ name: 'Colier metalic 20mm', quantity: 1, price: 1.00, vat: 21, um: 'buc' }],
-                payment: { method: 'cash', total: 1.00 }
-            }));
-        }
-
-        async function testReceiptMultiQty() {
-            log('BON TEST: 3 x Colier 1 RON = 3 RON...');
-            showResult('Bon cantitati', await api('POST', '/fiscal/receipt', {
-                items: [
-                    { name: 'Colier metalic 20mm', quantity: 3, price: 1.00, vat: 21, um: 'buc' }
-                ],
-                payment: { method: 'cash', total: 3.00 }
-            }));
-        }
-
-        async function sendCustomCommand() {
-            const cmd = document.getElementById('customCmd').value.trim();
-            if (!cmd) { log('Introduceti o comanda!', 'err'); return; }
-            log('Trimit comenzi:\\n' + cmd);
-            showResult('Comanda', await api('POST', '/fiscal/test-command', { command: cmd }));
         }
 
         checkHealth();
@@ -1315,9 +1218,19 @@ if __name__ == '__main__':
     
     CLOUD_URL = cloud_url
     
+    # ===== CURATARE LA PORNIRE =====
+    # Sterge ONLINE.TXT vechi pentru a preveni executarea comenzilor ramase
+    # din sesiuni anterioare (cauza bonurilor de test neasteptate!)
+    if os.path.exists(ONLINE_FILE):
+        try:
+            os.remove(ONLINE_FILE)
+            print(f"  [CURATARE] ONLINE.TXT vechi sters - comenzi ramase eliminate!")
+        except Exception as e:
+            print(f"  [AVERTISMENT] Nu am putut sterge ONLINE.TXT vechi: {e}")
+    
     print()
     print("=" * 64)
-    print("  ANDREPAU POS - Bridge Service v3.1")
+    print("  ANDREPAU POS - Bridge Service v3.2 (PRODUCTIE)")
     print("  Casa de Marcat INCOTEX Succes M7 via SuccesDrv")
     print("  Format: Manual SuccesDRV 8.5 (2023)")
     print("=" * 64)
@@ -1331,12 +1244,12 @@ if __name__ == '__main__':
         print(f"  Mod:             CLOUD POLLING (comenzi de la PWA)")
     else:
         print(f"  Cloud URL:       Nu este configurat")
-        print(f"  Mod:             LOCAL ONLY (doar pagina de test)")
+        print(f"  Mod:             LOCAL ONLY (doar diagnostic)")
     print("-" * 64)
-    print(f"  PAGINA TEST:     http://localhost:{BRIDGE_PORT}/test")
+    print(f"  PAGINA CONTROL:  http://localhost:{BRIDGE_PORT}/test")
     print("-" * 64)
-    print("  Endpoints locale:")
-    print("    POST /fiscal/receipt       Bon fiscal")
+    print("  Endpoints:")
+    print("    POST /fiscal/receipt       Bon fiscal (doar din aplicatie)")
     print("    POST /fiscal/cancel        Anulare bon (cmd 14)")
     print("    POST /fiscal/report/x      Raport X (cmd 30)")
     print("    POST /fiscal/report/z      Raport Z (cmd 15)")
@@ -1345,7 +1258,7 @@ if __name__ == '__main__':
     print("    POST /fiscal/drawer/open   Deschide sertar")
     print("    POST /fiscal/copy-receipt  Copie ultimul bon")
     print("    GET  /fiscal/totals        Totaluri zilnice")
-    print("    GET  /test                 Pagina de test")
+    print("    GET  /test                 Pagina control")
     print("=" * 64)
     print()
     print("  >>> Deschideti in browser: http://localhost:5555/test <<<")

@@ -40,6 +40,7 @@ Aplicatie completa de gestiune magazin si POS (Point of Sale) pentru magazinul d
 21. **Logare Profesionala** - [SALE], [CASH], [FISCAL], [STOCK] cu detalii complete
 22. **Dashboard Deschidere Zi** - Sold casa, status bridge, hold, alerte stoc, checklist, "INCEPE ZIUA"
 23. **Setup Electron Desktop** - Config complet pentru build aplicatie nativa Windows cu bonuri offline
+24. **Bridge v3.2 PRODUCTIE** - Eliminate butoanele de bon test, comanda manuala si endpoint /fiscal/test-command. Curatare ONLINE.TXT la pornire.
 
 ## Taskuri Viitoare
 

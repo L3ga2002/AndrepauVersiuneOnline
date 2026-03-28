@@ -227,9 +227,22 @@ export default function POSPage() {
           let cachedProducts = JSON.parse(cached);
           if (searchQuery) {
             const q = searchQuery.toLowerCase();
-            cachedProducts = cachedProducts.filter(p => 
-              p.nume.toLowerCase().includes(q) || (p.cod_bare && p.cod_bare.includes(q))
-            );
+            const priceNum = parseFloat(q.replace(',', '.'));
+            cachedProducts = cachedProducts.filter(p => {
+              // Name match (partial, any word)
+              const nameMatch = p.nume.toLowerCase().includes(q);
+              // Barcode match
+              const barcodeMatch = p.cod_bare && p.cod_bare.includes(q);
+              // Price match
+              const priceMatch = !isNaN(priceNum) && (
+                Math.abs(p.pret_vanzare - priceNum) < 0.5 ||
+                Math.abs(p.pret_achizitie - priceNum) < 0.5
+              );
+              // Multi-word fuzzy: each word in query found in name
+              const words = q.split(/\s+/).filter(w => w.length >= 2);
+              const fuzzyMatch = words.length > 1 && words.every(w => p.nume.toLowerCase().includes(w));
+              return nameMatch || barcodeMatch || priceMatch || fuzzyMatch;
+            });
           }
           if (selectedCategory) {
             cachedProducts = cachedProducts.filter(p => p.categorie === selectedCategory);

@@ -308,10 +308,39 @@ async def get_products(
 ):
     query = {}
     if search:
-        query["$or"] = [
-            {"nume": {"$regex": search, "$options": "i"}},
-            {"cod_bare": {"$regex": search, "$options": "i"}}
-        ]
+        search = search.strip()
+        # Check if search is a price (number)
+        try:
+            price_val = float(search.replace(',', '.'))
+            query["$or"] = [
+                {"pret_vanzare": price_val},
+                {"pret_achizitie": price_val},
+                {"pret_vanzare": {"$gte": price_val - 0.5, "$lte": price_val + 0.5}},
+                {"nume": {"$regex": search, "$options": "i"}},
+                {"cod_bare": {"$regex": search, "$options": "i"}}
+            ]
+        except ValueError:
+            # Build fuzzy search: split into words, each word matches independently
+            words = search.split()
+            if len(words) > 1:
+                # Multi-word: each word must appear somewhere in the name
+                conditions = []
+                for word in words:
+                    if len(word) >= 2:
+                        conditions.append({"nume": {"$regex": word, "$options": "i"}})
+                if conditions:
+                    query["$and"] = conditions
+                else:
+                    query["$or"] = [
+                        {"nume": {"$regex": search, "$options": "i"}},
+                        {"cod_bare": {"$regex": search, "$options": "i"}}
+                    ]
+            else:
+                # Single word: try partial match (even last part of name)
+                query["$or"] = [
+                    {"nume": {"$regex": search, "$options": "i"}},
+                    {"cod_bare": {"$regex": search, "$options": "i"}}
+                ]
     if categorie:
         query["categorie"] = categorie
     if low_stock:
@@ -794,6 +823,89 @@ async def create_nir(nir: NIRCreate, user: dict = Depends(require_admin)):
     
     await db.nirs.insert_one(nir_doc)
     return NIRResponse(**{k: v for k, v in nir_doc.items() if k != "_id"})
+
+
+@api_router.post("/nir/from-pdf")
+async def create_nir_from_pdf(data: dict, user: dict = Depends(require_admin)):
+    """Create NIR from PDF import - auto-creates new products for unmatched items"""
+    furnizor_id = data.get("furnizor_id")
+    numar_factura = data.get("numar_factura")
+    items = data.get("items", [])
+
+    if not furnizor_id or not numar_factura or not items:
+        raise HTTPException(status_code=400, detail="Date incomplete")
+
+    supplier = await db.suppliers.find_one({"id": furnizor_id}, {"_id": 0})
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Furnizor negăsit")
+
+    numar_nir = await generate_nir_number()
+    nir_items = []
+    created_products = []
+
+    for item in items:
+        product_id = item.get("product_id")
+        denumire = item.get("denumire", item.get("nume", ""))
+        cantitate = float(item.get("cantitate", 0))
+        pret_achizitie = float(item.get("pret_achizitie", 0))
+        um = item.get("um", "buc")
+
+        if not product_id:
+            # Auto-create new product
+            new_product = {
+                "id": str(uuid.uuid4()),
+                "nume": denumire,
+                "categorie": "Necategorisit",
+                "cod_bare": "",
+                "pret_achizitie": pret_achizitie,
+                "pret_vanzare": round(pret_achizitie * 1.3, 2),  # 30% markup default
+                "tva": 19,
+                "unitate": um if um in ["buc", "sac", "kg", "metru", "litru", "rola"] else "buc",
+                "stoc": cantitate,
+                "stoc_minim": 5,
+                "descriere": "",
+                "furnizor_id": furnizor_id,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.products.insert_one(new_product)
+            product_id = new_product["id"]
+            created_products.append({"product_id": product_id, "nume": denumire, "cod_bare": ""})
+        else:
+            # Update existing product stock
+            await db.products.update_one(
+                {"id": product_id},
+                {"$inc": {"stoc": cantitate}}
+            )
+            prod = await db.products.find_one({"id": product_id}, {"_id": 0, "nume": 1, "cod_bare": 1})
+            created_products.append({"product_id": product_id, "nume": prod["nume"] if prod else denumire, "cod_bare": prod.get("cod_bare", "") if prod else ""})
+
+        nir_items.append({
+            "product_id": product_id,
+            "nume": denumire,
+            "cantitate": cantitate,
+            "pret_achizitie": pret_achizitie
+        })
+
+    total = sum(i["cantitate"] * i["pret_achizitie"] for i in nir_items)
+    nir_doc = {
+        "id": str(uuid.uuid4()),
+        "numar_nir": numar_nir,
+        "furnizor_id": furnizor_id,
+        "numar_factura": numar_factura,
+        "items": nir_items,
+        "total": total,
+        "furnizor_nume": supplier["nume"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+
+    await db.nirs.insert_one(nir_doc)
+    nir_response = {k: v for k, v in nir_doc.items() if k != "_id"}
+    return {
+        "nir": nir_response,
+        "created_products": created_products,
+        "products_created_count": len([p for p in items if not p.get("product_id")]),
+        "products_updated_count": len([p for p in items if p.get("product_id")])
+    }
 
 @api_router.get("/nir", response_model=List[NIRResponse])
 async def get_nirs(user: dict = Depends(get_current_user)):

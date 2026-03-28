@@ -268,7 +268,7 @@ export default function StockPage() {
   };
 
   const submitPdfNir = async () => {
-    const enabledItems = pdfItems.filter(i => i.enabled && i.product_id);
+    const enabledItems = pdfItems.filter(i => i.enabled);
     if (!pdfSupplierId) {
       toast.error('Selectați furnizorul');
       return;
@@ -278,7 +278,7 @@ export default function StockPage() {
       return;
     }
     if (enabledItems.length === 0) {
-      toast.error('Selectați cel puțin un produs potrivit');
+      toast.error('Selectați cel puțin un produs');
       return;
     }
 
@@ -288,15 +288,15 @@ export default function StockPage() {
         furnizor_id: pdfSupplierId,
         numar_factura: pdfInvoiceNumber,
         items: enabledItems.map(item => ({
-          product_id: item.product_id,
-          nume: item.product_nume || item.denumire_pdf,
+          product_id: item.product_id || null,
+          denumire: item.product_nume || item.denumire_pdf,
           cantitate: parseFloat(item.cantitate),
-          pret_achizitie: parseFloat(item.pret_unitar)
-        })),
-        total: enabledItems.reduce((sum, i) => sum + (parseFloat(i.cantitate) * parseFloat(i.pret_unitar)), 0)
+          pret_achizitie: parseFloat(item.pret_unitar),
+          um: item.um || 'buc'
+        }))
       };
 
-      const response = await fetch(`${API_URL}/nir`, {
+      const response = await fetch(`${API_URL}/nir/from-pdf`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -306,16 +306,21 @@ export default function StockPage() {
       });
 
       if (response.ok) {
-        toast.success('NIR creat din PDF cu succes');
+        const result = await response.json();
+        const newCount = result.products_created_count || 0;
+        const updCount = result.products_updated_count || 0;
+        toast.success(`NIR creat! ${newCount} produse noi create, ${updCount} actualizate`);
         setShowPdfDialog(false);
-        // Open barcode dialog with the items from this NIR
-        const nirItems = enabledItems.filter(i => i.product_id).map(item => ({
-          product_id: item.product_id,
-          nume: item.product_nume || item.denumire_pdf,
-          cod_bare: ''
+        // Open barcode dialog with ALL items
+        const nirItems = (result.created_products || []).map(p => ({
+          product_id: p.product_id,
+          nume: p.nume,
+          cod_bare: p.cod_bare || ''
         }));
-        setBarcodeItems(nirItems);
-        setShowBarcodeDialog(true);
+        if (nirItems.length > 0) {
+          setBarcodeItems(nirItems);
+          setShowBarcodeDialog(true);
+        }
         setPdfResult(null);
         setPdfItems([]);
         fetchNirs();
@@ -806,7 +811,7 @@ export default function StockPage() {
 
       {/* PDF Import Dialog */}
       <Dialog open={showPdfDialog} onOpenChange={(open) => { if (!pdfParsing && !savingPdfNir) setShowPdfDialog(open); }}>
-        <DialogContent className="bg-card border-border max-w-5xl max-h-[90vh] overflow-y-auto" data-testid="pdf-import-dialog">
+        <DialogContent className="bg-card border-border max-w-6xl max-h-[90vh] overflow-y-auto" data-testid="pdf-import-dialog">
           <DialogHeader>
             <DialogTitle className="font-heading text-xl uppercase text-foreground flex items-center gap-3">
               <FileUp className="w-6 h-6 text-primary" />
@@ -895,11 +900,11 @@ export default function StockPage() {
                       <TableHeader>
                         <TableRow className="border-border">
                           <TableHead className="w-10"></TableHead>
-                          <TableHead className="text-muted-foreground">Denumire din PDF</TableHead>
-                          <TableHead className="text-muted-foreground">Produs Potrivit</TableHead>
-                          <TableHead className="text-muted-foreground text-right w-24">Cantitate</TableHead>
-                          <TableHead className="text-muted-foreground text-right w-28">Preț Unit.</TableHead>
-                          <TableHead className="text-muted-foreground text-right w-28">Valoare</TableHead>
+                          <TableHead className="text-muted-foreground w-[35%]">Denumire din PDF</TableHead>
+                          <TableHead className="text-muted-foreground w-[25%]">Produs Potrivit</TableHead>
+                          <TableHead className="text-muted-foreground text-center w-[12%]">Cantitate</TableHead>
+                          <TableHead className="text-muted-foreground text-center w-[13%]">Preț Unit.</TableHead>
+                          <TableHead className="text-muted-foreground text-right w-[15%]">Valoare</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -923,37 +928,46 @@ export default function StockPage() {
                               </button>
                             </TableCell>
                             <TableCell>
-                              <p className="text-foreground text-sm">{item.denumire_pdf}</p>
-                              {item.match_confidence > 0 && item.match_confidence < 80 && (
-                                <p className="text-xs text-yellow-500 mt-0.5">Potrivire: {item.match_confidence}%</p>
-                              )}
+                              <p className="text-foreground text-sm font-medium">{item.denumire_pdf}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">{item.um}</p>
                             </TableCell>
                             <TableCell>
                               <Select
-                                value={item.product_id || "_none_"}
+                                value={item.product_id || "_new_"}
                                 onValueChange={(v) => {
-                                  const prod = products.find(p => p.id === v);
-                                  setPdfItems(prev => prev.map(i => 
-                                    i.idx === item.idx 
-                                      ? { ...i, product_id: v === "_none_" ? null : v, product_nume: prod?.nume || null }
-                                      : i
-                                  ));
+                                  if (v === "_new_") {
+                                    setPdfItems(prev => prev.map(i => 
+                                      i.idx === item.idx 
+                                        ? { ...i, product_id: null, product_nume: null }
+                                        : i
+                                    ));
+                                  } else {
+                                    const prod = products.find(p => p.id === v);
+                                    setPdfItems(prev => prev.map(i => 
+                                      i.idx === item.idx 
+                                        ? { ...i, product_id: v, product_nume: prod?.nume || null }
+                                        : i
+                                    ));
+                                  }
                                 }}
                               >
                                 <SelectTrigger className={`h-9 text-sm bg-background border-border ${
-                                  item.product_id ? 'text-foreground' : 'text-destructive'
+                                  item.product_id ? 'text-foreground' : 'text-green-500'
                                 }`}>
-                                  <SelectValue placeholder="Selectați..." />
+                                  <SelectValue placeholder="Produs Nou" />
                                 </SelectTrigger>
                                 <SelectContent className="bg-card border-border max-h-60">
-                                  <SelectItem value="_none_">-- Neselectat --</SelectItem>
+                                  <SelectItem value="_new_">+ PRODUS NOU</SelectItem>
                                   {products.filter(p => p && p.id).map(p => (
                                     <SelectItem key={p.id} value={p.id}>{p.nume}</SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
                               {item.product_id && item.match_confidence >= 80 && (
-                                <p className="text-xs text-green-500 mt-0.5">Auto-potrivit</p>
+                                <p className="text-xs text-blue-400 mt-0.5">Auto-potrivit</p>
+                              )}
+                              {!item.product_id && (
+                                <p className="text-xs text-green-500 mt-0.5">Se creează automat</p>
                               )}
                             </TableCell>
                             <TableCell className="text-right">
@@ -986,12 +1000,17 @@ export default function StockPage() {
               </div>
 
               {/* Total */}
-              {pdfItems.filter(i => i.enabled && i.product_id).length > 0 && (
+              {pdfItems.filter(i => i.enabled).length > 0 && (
                 <div className="flex justify-between items-center pt-4 border-t border-border">
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-sm text-muted-foreground space-y-1">
                     {pdfItems.filter(i => i.enabled && !i.product_id).length > 0 && (
-                      <span className="text-yellow-500">
-                        {pdfItems.filter(i => i.enabled && !i.product_id).length} produse fără potrivire (vor fi ignorate)
+                      <span className="text-green-500 block">
+                        {pdfItems.filter(i => i.enabled && !i.product_id).length} produse noi (vor fi create automat)
+                      </span>
+                    )}
+                    {pdfItems.filter(i => i.enabled && i.product_id).length > 0 && (
+                      <span className="text-blue-400 block">
+                        {pdfItems.filter(i => i.enabled && i.product_id).length} produse existente (stoc actualizat)
                       </span>
                     )}
                   </div>
@@ -999,7 +1018,7 @@ export default function StockPage() {
                     <p className="text-sm text-muted-foreground">Total NIR</p>
                     <p className="font-mono text-2xl font-bold text-primary" data-testid="pdf-nir-total">
                       {formatCurrency(
-                        pdfItems.filter(i => i.enabled && i.product_id)
+                        pdfItems.filter(i => i.enabled)
                           .reduce((sum, i) => sum + (parseFloat(i.cantitate || 0) * parseFloat(i.pret_unitar || 0)), 0)
                       )}
                     </p>
@@ -1022,13 +1041,13 @@ export default function StockPage() {
               <Button
                 data-testid="save-pdf-nir"
                 onClick={submitPdfNir}
-                disabled={savingPdfNir || pdfItems.filter(i => i.enabled && i.product_id).length === 0}
+                disabled={savingPdfNir || pdfItems.filter(i => i.enabled).length === 0}
                 className="h-12 px-6 bg-primary text-primary-foreground"
               >
                 {savingPdfNir ? (
                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Se salvează...</>
                 ) : (
-                  <>Salvează NIR ({pdfItems.filter(i => i.enabled && i.product_id).length} produse)</>
+                  <>Salvează NIR ({pdfItems.filter(i => i.enabled).length} produse)</>
                 )}
               </Button>
             )}

@@ -41,31 +41,31 @@ Aplicatie completa de gestiune magazin si POS (Point of Sale) pentru magazinul d
 22. **Dashboard Deschidere Zi** - Sold casa, status bridge, hold, alerte stoc, checklist, "INCEPE ZIUA"
 23. **Setup Electron Desktop** - Config complet pentru build aplicatie nativa Windows cu bonuri offline
 24. **Bridge v3.2 PRODUCTIE** - Eliminate butoanele de bon test, comanda manuala si endpoint /fiscal/test-command. Curatare ONLINE.TXT la pornire.
+25. **Import NIR din PDF** - Parsare facturi furnizori PDF, extragere automata produse/cantitati/preturi, potrivire cu produse existente, preview editabil inainte de salvare NIR
+26. **Import CSV Produse** - Upload CSV cu produse, preview cu Nou/Actualizare, template CSV descarcabil, suport delimitator virgula/punct-virgula, codificari multiple (UTF-8, Latin-1, CP1252)
 
 ## Taskuri Viitoare
-
-### P0: Build & Test Electron Desktop
-- Utilizatorul trebuie sa ruleze `yarn electron-dev` pe PC-ul din magazin
-- Testare comunicare directa cu bridge-ul local
-- Build installer Windows (.exe)
 
 ### P1: Mod Offline Avansat
 - Service Worker complet, IndexedDB, sync coada offline
 
-### P2: Bridge Auto-Start
-- Bridge sa porneasca automat cu Windows/Electron
+### P2: Raport Z (End of Day Dashboard)
+- Sumar automat la sfarsitul zilei
 
-### P3: Import NIR din PDF
-- Parsare facturi furnizori din PDF
+### P3: Bridge Auto-Start
+- Bridge sa porneasca automat cu Windows/Electron
 
 ### P4: Integrare Verifone V200c
 - Terminal POS card (blocat pe documentatie ECR)
 
+### Electron (PAUZA)
+- Build & Test Electron Desktop (.exe) - utilizatorul foloseste PWA deocamdata
+
 ## Structura Fisiere Cheie
 ```
 /app/backend/
-  server.py              - API principal + Fiscal Queue + Held Orders + Opening Summary
-  fiscal_bridge.py       - Bridge local (v3.0) cloud polling
+  server.py              - API principal + Fiscal Queue + Held Orders + Opening Summary + CSV/PDF Import
+  fiscal_bridge.py       - Bridge local (v3.2) cloud polling
 /app/frontend/
   electron/main.js       - Electron main process (comunica direct cu bridge)
   electron/preload.js    - Expune bridge API catre React
@@ -75,18 +75,27 @@ Aplicatie completa de gestiune magazin si POS (Point of Sale) pentru magazinul d
     StartDayPage.js      - Dashboard deschidere zi
     POSPage.js           - POS cu hold, F-keys, offline, transaction ID
     CashOperationsPage.js - Operatiuni casa
-    StockPage.js         - Stoc cu alerte severity/deficit
+    StockPage.js         - Stoc cu alerte, NIR manual + Import din PDF
+    ProductsPage.js      - Gestiune produse + Import/Export CSV
+    ReportsPage.js       - Rapoarte vanzari
+    SuppliersPage.js     - Furnizori CRUD
+    SettingsPage.js      - Setari
 ```
 
 ## API Endpoints Principale
 - `POST /api/auth/login` - Autentificare
 - `GET /api/daily/opening-summary` - Dashboard deschidere zi
 - `GET/POST /api/products` - Produse CRUD
+- `GET /api/products/csv-template` - Descarca template CSV
+- `POST /api/products/import-csv` - Parseaza CSV si returneaza preview
+- `POST /api/products/import-csv/confirm` - Confirma si executa importul CSV
 - `POST /api/sales` - Creare vanzare (cu transaction_id, idempotent)
 - `POST /api/held-orders` - Hold cu rezervare stoc
 - `GET /api/held-orders` - Lista (auto-expira >24h, stoc ramane dedus)
 - `POST /api/held-orders/{id}/restore` - Restaurare (stoc restaurat)
 - `POST /api/held-orders/{id}/cancel` - Anulare (stoc restaurat)
 - `GET /api/stock/alerts` - Alerte cu severity si deficit
+- `POST /api/nir` - Creare NIR
+- `POST /api/nir/parse-pdf` - Parseaza PDF factura si extrage produse
 - `POST /api/fiscal/queue` - Comanda fiscala
 - `GET /api/fiscal/pending` - Bridge poll

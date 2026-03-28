@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { formatCurrency, formatNumber, getStockStatus } from '../lib/utils';
-import { Plus, Search, Edit, Trash2, Package, AlertTriangle, Barcode, ScanLine } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Package, AlertTriangle, Barcode, ScanLine, Upload, Download, FileText, Check, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const UNITS = [
@@ -69,6 +69,14 @@ export default function ProductsPage() {
   const [scannedBarcode, setScannedBarcode] = useState('');
   const [lastScannedProduct, setLastScannedProduct] = useState(null);
   const searchRef = useRef(null);
+
+  // CSV Import state
+  const [showCsvDialog, setShowCsvDialog] = useState(false);
+  const [csvParsing, setCsvParsing] = useState(false);
+  const [csvResult, setCsvResult] = useState(null);
+  const [csvItems, setCsvItems] = useState([]);
+  const [csvImporting, setCsvImporting] = useState(false);
+  const csvFileRef = useRef(null);
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -306,6 +314,111 @@ export default function ProductsPage() {
     return supplier ? supplier.nume : '-';
   };
 
+  // CSV Import functions
+  const handleCsvUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    setCsvParsing(true);
+    setCsvResult(null);
+    setCsvItems([]);
+    setShowCsvDialog(true);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch(`${API_URL}/products/import-csv`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCsvResult(data);
+        setCsvItems(data.items.map((item, idx) => ({ ...item, enabled: true, idx })));
+
+        if (data.items.length === 0) {
+          toast.warning('Nu s-au găsit produse în CSV');
+        } else {
+          toast.success(`${data.items.length} produse găsite (${data.total_create} noi, ${data.total_update} actualizări)`);
+        }
+      } else {
+        const err = await response.json();
+        toast.error(err.detail || 'Eroare la parsare CSV');
+        setShowCsvDialog(false);
+      }
+    } catch (error) {
+      toast.error('Eroare la încărcare CSV');
+      setShowCsvDialog(false);
+    } finally {
+      setCsvParsing(false);
+    }
+  };
+
+  const toggleCsvItem = (idx) => {
+    setCsvItems(prev => prev.map(item =>
+      item.idx === idx ? { ...item, enabled: !item.enabled } : item
+    ));
+  };
+
+  const confirmCsvImport = async () => {
+    const enabledItems = csvItems.filter(i => i.enabled);
+    if (enabledItems.length === 0) {
+      toast.error('Selectați cel puțin un produs');
+      return;
+    }
+
+    setCsvImporting(true);
+    try {
+      const response = await fetch(`${API_URL}/products/import-csv/confirm`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ items: enabledItems })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        toast.success(`Import finalizat: ${result.created} create, ${result.updated} actualizate`);
+        setShowCsvDialog(false);
+        setCsvResult(null);
+        setCsvItems([]);
+        fetchProducts();
+      } else {
+        const err = await response.json();
+        toast.error(err.detail || 'Eroare la import');
+      }
+    } catch (error) {
+      toast.error('Eroare la import');
+    } finally {
+      setCsvImporting(false);
+    }
+  };
+
+  const downloadCsvTemplate = async () => {
+    try {
+      const response = await fetch(`${API_URL}/products/csv-template`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'template_import_produse.csv';
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      toast.error('Eroare la descărcare template');
+    }
+  };
+
   return (
     <div className="p-6 space-y-6" data-testid="products-page">
       {/* Header */}
@@ -320,14 +433,42 @@ export default function ProductsPage() {
         </div>
         
         {isAdmin && (
-          <Button
-            data-testid="add-product-btn"
-            onClick={openCreateDialog}
-            className="h-12 px-6 bg-primary text-primary-foreground"
-          >
-            <Plus className="w-5 h-5 mr-2" />
-            Adaugă Produs
-          </Button>
+          <div className="flex gap-3">
+            <input
+              ref={csvFileRef}
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={handleCsvUpload}
+              data-testid="csv-file-input"
+            />
+            <Button
+              data-testid="download-csv-template-btn"
+              onClick={downloadCsvTemplate}
+              variant="outline"
+              className="h-12 px-4 border-border text-muted-foreground"
+            >
+              <Download className="w-5 h-5 mr-2" />
+              Template CSV
+            </Button>
+            <Button
+              data-testid="import-csv-btn"
+              onClick={() => csvFileRef.current?.click()}
+              variant="outline"
+              className="h-12 px-4 border-border text-foreground"
+            >
+              <Upload className="w-5 h-5 mr-2" />
+              Import CSV
+            </Button>
+            <Button
+              data-testid="add-product-btn"
+              onClick={openCreateDialog}
+              className="h-12 px-6 bg-primary text-primary-foreground"
+            >
+              <Plus className="w-5 h-5 mr-2" />
+              Adaugă Produs
+            </Button>
+          </div>
         )}
       </div>
 
@@ -750,6 +891,179 @@ export default function ProductsPage() {
               >
                 <Plus className="w-5 h-5 mr-2" />
                 Adaugă Produs Nou
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* CSV Import Dialog */}
+      <Dialog open={showCsvDialog} onOpenChange={(open) => { if (!csvParsing && !csvImporting) setShowCsvDialog(open); }}>
+        <DialogContent className="bg-card border-border max-w-5xl max-h-[90vh] overflow-y-auto" data-testid="csv-import-dialog">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-xl uppercase text-foreground flex items-center gap-3">
+              <Upload className="w-6 h-6 text-primary" />
+              Import Produse din CSV
+            </DialogTitle>
+          </DialogHeader>
+
+          {csvParsing ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-4">
+              <Loader2 className="w-12 h-12 text-primary animate-spin" />
+              <p className="text-muted-foreground">Se procesează fișierul CSV...</p>
+            </div>
+          ) : csvResult ? (
+            <div className="space-y-6">
+              {/* Summary */}
+              <div className="flex gap-4 p-4 bg-secondary/30 rounded-sm">
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-3 h-3 rounded-full bg-green-500"></span>
+                  <span className="text-sm text-foreground font-medium">
+                    {csvItems.filter(i => i.enabled && i.action === 'create').length} produse noi
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-3 h-3 rounded-full bg-blue-500"></span>
+                  <span className="text-sm text-foreground font-medium">
+                    {csvItems.filter(i => i.enabled && i.action === 'update').length} actualizări
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-3 h-3 rounded-full bg-muted-foreground"></span>
+                  <span className="text-sm text-muted-foreground">
+                    {csvItems.filter(i => !i.enabled).length} ignorate
+                  </span>
+                </div>
+              </div>
+
+              {/* Errors */}
+              {csvResult.errors.length > 0 && (
+                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-sm">
+                  <p className="text-sm font-medium text-destructive mb-2">Erori la parsare:</p>
+                  {csvResult.errors.slice(0, 5).map((err, idx) => (
+                    <p key={idx} className="text-xs text-destructive/80">{err}</p>
+                  ))}
+                  {csvResult.errors.length > 5 && (
+                    <p className="text-xs text-destructive/60 mt-1">...și alte {csvResult.errors.length - 5} erori</p>
+                  )}
+                </div>
+              )}
+
+              {/* Select all controls */}
+              <div className="flex items-center justify-between">
+                <h4 className="font-heading text-sm uppercase text-muted-foreground">
+                  Produse ({csvItems.filter(i => i.enabled).length} selectate din {csvItems.length})
+                </h4>
+                <div className="flex gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCsvItems(prev => prev.map(i => ({ ...i, enabled: true })))}
+                    className="text-xs text-muted-foreground"
+                  >
+                    Selectează toate
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCsvItems(prev => prev.map(i => ({ ...i, enabled: false })))}
+                    className="text-xs text-muted-foreground"
+                  >
+                    Deselectează toate
+                  </Button>
+                </div>
+              </div>
+
+              {/* Items table */}
+              <ScrollArea className="h-[400px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-border">
+                      <TableHead className="w-10"></TableHead>
+                      <TableHead className="text-muted-foreground">Denumire</TableHead>
+                      <TableHead className="text-muted-foreground">Categorie</TableHead>
+                      <TableHead className="text-muted-foreground text-right">Preț Achiziție</TableHead>
+                      <TableHead className="text-muted-foreground text-right">Preț Vânzare</TableHead>
+                      <TableHead className="text-muted-foreground text-right">Stoc</TableHead>
+                      <TableHead className="text-muted-foreground text-center">Acțiune</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {csvItems.map(item => (
+                      <TableRow 
+                        key={item.idx} 
+                        className={`border-border ${!item.enabled ? 'opacity-40' : ''}`}
+                        data-testid={`csv-item-${item.idx}`}
+                      >
+                        <TableCell>
+                          <button
+                            onClick={() => toggleCsvItem(item.idx)}
+                            className={`w-6 h-6 rounded-sm border flex items-center justify-center transition-colors ${
+                              item.enabled 
+                                ? 'bg-primary border-primary text-primary-foreground' 
+                                : 'border-border text-transparent'
+                            }`}
+                            data-testid={`csv-toggle-${item.idx}`}
+                          >
+                            <Check className="w-4 h-4" />
+                          </button>
+                        </TableCell>
+                        <TableCell>
+                          <p className="text-foreground font-medium">{item.nume}</p>
+                          {item.cod_bare && (
+                            <p className="text-xs font-mono text-muted-foreground">{item.cod_bare}</p>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-sm">{item.categorie}</TableCell>
+                        <TableCell className="text-right font-mono text-foreground">
+                          {item.pret_achizitie.toFixed(2)} RON
+                        </TableCell>
+                        <TableCell className="text-right font-mono font-bold text-primary">
+                          {item.pret_vanzare.toFixed(2)} RON
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-foreground">
+                          {item.stoc} {item.unitate}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {item.action === 'create' ? (
+                            <span className="inline-flex items-center px-2 py-1 rounded-sm text-xs font-medium bg-green-500/10 text-green-500">
+                              <Plus className="w-3 h-3 mr-1" /> Nou
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-1 rounded-sm text-xs font-medium bg-blue-500/10 text-blue-500">
+                              <Edit className="w-3 h-3 mr-1" /> Actualizare
+                            </span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
+            </div>
+          ) : null}
+
+          <DialogFooter className="gap-2 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowCsvDialog(false)}
+              disabled={csvParsing || csvImporting}
+              className="h-12 px-6 border-border text-foreground"
+            >
+              Anulează
+            </Button>
+            {csvResult && csvItems.length > 0 && (
+              <Button
+                data-testid="confirm-csv-import"
+                onClick={confirmCsvImport}
+                disabled={csvImporting || csvItems.filter(i => i.enabled).length === 0}
+                className="h-12 px-6 bg-primary text-primary-foreground"
+              >
+                {csvImporting ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Se importă...</>
+                ) : (
+                  <>Importă {csvItems.filter(i => i.enabled).length} produse</>
+                )}
               </Button>
             )}
           </DialogFooter>

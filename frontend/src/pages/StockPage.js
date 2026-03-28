@@ -10,7 +10,7 @@ import { ScrollArea } from '../components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { formatCurrency, formatNumber, formatDate, getStockStatus } from '../lib/utils';
-import { Package, AlertTriangle, TrendingDown, Archive, Plus, Trash2, FileText } from 'lucide-react';
+import { Package, AlertTriangle, TrendingDown, Archive, Plus, Trash2, FileText, Upload, FileUp, Check, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function StockPage() {
@@ -30,6 +30,15 @@ export default function StockPage() {
     items: []
   });
   const [nirItem, setNirItem] = useState({ product_id: '', cantitate: '', pret_achizitie: '' });
+
+  // PDF Import state
+  const [showPdfDialog, setShowPdfDialog] = useState(false);
+  const [pdfParsing, setPdfParsing] = useState(false);
+  const [pdfResult, setPdfResult] = useState(null);
+  const [pdfItems, setPdfItems] = useState([]);
+  const [pdfInvoiceNumber, setPdfInvoiceNumber] = useState('');
+  const [pdfSupplierId, setPdfSupplierId] = useState('');
+  const [savingPdfNir, setSavingPdfNir] = useState(false);
 
   const fetchDashboard = useCallback(async () => {
     try {
@@ -170,6 +179,141 @@ export default function StockPage() {
     setShowNirDialog(true);
   };
 
+  // PDF Import functions
+  const handlePdfUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    setPdfParsing(true);
+    setPdfResult(null);
+    setPdfItems([]);
+    setShowPdfDialog(true);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch(`${API_URL}/nir/parse-pdf`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setPdfResult(data);
+        setPdfInvoiceNumber(data.invoice_number || '');
+        setPdfItems(data.items.map((item, idx) => ({
+          ...item,
+          enabled: true,
+          idx
+        })));
+
+        // Try to auto-match supplier
+        if (data.supplier_name) {
+          const matched = suppliers.find(s => 
+            s.nume.toLowerCase().includes(data.supplier_name.toLowerCase()) ||
+            data.supplier_name.toLowerCase().includes(s.nume.toLowerCase())
+          );
+          if (matched) setPdfSupplierId(matched.id);
+        }
+
+        if (data.items.length === 0) {
+          toast.warning('Nu am putut extrage produse din PDF. Verificați manual.');
+        } else {
+          toast.success(`${data.items.length} produse extrase din PDF`);
+        }
+      } else {
+        const err = await response.json();
+        toast.error(err.detail || 'Eroare la parsare PDF');
+        setShowPdfDialog(false);
+      }
+    } catch (error) {
+      toast.error('Eroare la încărcare PDF');
+      setShowPdfDialog(false);
+    } finally {
+      setPdfParsing(false);
+    }
+  };
+
+  const togglePdfItem = (idx) => {
+    setPdfItems(prev => prev.map(item => 
+      item.idx === idx ? { ...item, enabled: !item.enabled } : item
+    ));
+  };
+
+  const updatePdfItem = (idx, field, value) => {
+    setPdfItems(prev => prev.map(item => {
+      if (item.idx !== idx) return item;
+      const updated = { ...item, [field]: value };
+      if (field === 'cantitate' || field === 'pret_unitar') {
+        updated.valoare = parseFloat(updated.cantitate || 0) * parseFloat(updated.pret_unitar || 0);
+      }
+      return updated;
+    }));
+  };
+
+  const submitPdfNir = async () => {
+    const enabledItems = pdfItems.filter(i => i.enabled && i.product_id);
+    if (!pdfSupplierId) {
+      toast.error('Selectați furnizorul');
+      return;
+    }
+    if (!pdfInvoiceNumber) {
+      toast.error('Introduceți numărul facturii');
+      return;
+    }
+    if (enabledItems.length === 0) {
+      toast.error('Selectați cel puțin un produs potrivit');
+      return;
+    }
+
+    setSavingPdfNir(true);
+    try {
+      const nirPayload = {
+        furnizor_id: pdfSupplierId,
+        numar_factura: pdfInvoiceNumber,
+        items: enabledItems.map(item => ({
+          product_id: item.product_id,
+          nume: item.product_nume || item.denumire_pdf,
+          cantitate: parseFloat(item.cantitate),
+          pret_achizitie: parseFloat(item.pret_unitar)
+        })),
+        total: enabledItems.reduce((sum, i) => sum + (parseFloat(i.cantitate) * parseFloat(i.pret_unitar)), 0)
+      };
+
+      const response = await fetch(`${API_URL}/nir`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(nirPayload)
+      });
+
+      if (response.ok) {
+        toast.success('NIR creat din PDF cu succes');
+        setShowPdfDialog(false);
+        setPdfResult(null);
+        setPdfItems([]);
+        fetchNirs();
+        fetchDashboard();
+        fetchAlerts();
+        fetchProducts();
+      } else {
+        const err = await response.json();
+        toast.error(err.detail || 'Eroare la creare NIR');
+      }
+    } catch (error) {
+      toast.error('Eroare la creare NIR');
+    } finally {
+      setSavingPdfNir(false);
+    }
+  };
+
+  const pdfFileRef = React.useRef(null);
+
   return (
     <div className="p-6 space-y-6" data-testid="stock-page">
       {/* Header */}
@@ -184,14 +328,33 @@ export default function StockPage() {
         </div>
         
         {isAdmin && (
-          <Button
-            data-testid="create-nir-btn"
-            onClick={openNirDialog}
-            className="h-12 px-6 bg-primary text-primary-foreground"
-          >
-            <Plus className="w-5 h-5 mr-2" />
-            Intrare Marfă (NIR)
-          </Button>
+          <div className="flex gap-3">
+            <input
+              ref={pdfFileRef}
+              type="file"
+              accept=".pdf"
+              className="hidden"
+              onChange={handlePdfUpload}
+              data-testid="pdf-file-input"
+            />
+            <Button
+              data-testid="import-pdf-btn"
+              onClick={() => pdfFileRef.current?.click()}
+              variant="outline"
+              className="h-12 px-6 border-border text-foreground"
+            >
+              <FileUp className="w-5 h-5 mr-2" />
+              Import din PDF
+            </Button>
+            <Button
+              data-testid="create-nir-btn"
+              onClick={openNirDialog}
+              className="h-12 px-6 bg-primary text-primary-foreground"
+            >
+              <Plus className="w-5 h-5 mr-2" />
+              Intrare Marfă (NIR)
+            </Button>
+          </div>
         )}
       </div>
 
@@ -571,6 +734,238 @@ export default function StockPage() {
             >
               Salvează NIR
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* PDF Import Dialog */}
+      <Dialog open={showPdfDialog} onOpenChange={(open) => { if (!pdfParsing && !savingPdfNir) setShowPdfDialog(open); }}>
+        <DialogContent className="bg-card border-border max-w-5xl max-h-[90vh] overflow-y-auto" data-testid="pdf-import-dialog">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-xl uppercase text-foreground flex items-center gap-3">
+              <FileUp className="w-6 h-6 text-primary" />
+              Import NIR din PDF
+            </DialogTitle>
+          </DialogHeader>
+
+          {pdfParsing ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-4">
+              <Loader2 className="w-12 h-12 text-primary animate-spin" />
+              <p className="text-muted-foreground">Se parsează PDF-ul...</p>
+            </div>
+          ) : pdfResult ? (
+            <div className="space-y-6">
+              {/* Invoice info */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground">Furnizor *</Label>
+                  <Select 
+                    value={pdfSupplierId || "_none_"} 
+                    onValueChange={(v) => setPdfSupplierId(v === "_none_" ? "" : v)}
+                  >
+                    <SelectTrigger data-testid="pdf-furnizor" className="h-12 mt-1 bg-background border-border text-foreground">
+                      <SelectValue placeholder="Selectați furnizorul" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-card border-border">
+                      <SelectItem value="_none_">Selectați furnizorul</SelectItem>
+                      {suppliers.filter(sup => sup && sup.id).map(sup => (
+                        <SelectItem key={sup.id} value={sup.id}>{sup.nume}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {pdfResult.supplier_name && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Detectat din PDF: <span className="text-primary">{pdfResult.supplier_name}</span>
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Număr Factură *</Label>
+                  <Input
+                    data-testid="pdf-factura"
+                    value={pdfInvoiceNumber}
+                    onChange={(e) => setPdfInvoiceNumber(e.target.value)}
+                    className="h-12 mt-1 bg-background border-border text-foreground font-mono"
+                    placeholder="Ex: FV-001234"
+                  />
+                </div>
+              </div>
+
+              {/* Items table */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-heading text-sm uppercase text-muted-foreground">
+                    Produse Extrase ({pdfItems.filter(i => i.enabled).length} selectate din {pdfItems.length})
+                  </h4>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setPdfItems(prev => prev.map(i => ({ ...i, enabled: true })))}
+                      className="text-xs text-muted-foreground"
+                    >
+                      Selectează toate
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setPdfItems(prev => prev.map(i => ({ ...i, enabled: false })))}
+                      className="text-xs text-muted-foreground"
+                    >
+                      Deselectează toate
+                    </Button>
+                  </div>
+                </div>
+
+                {pdfItems.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground bg-secondary/20 rounded-sm">
+                    <FileText className="w-12 h-12 mb-3 opacity-50" />
+                    <p className="font-medium">Nu s-au găsit produse în PDF</p>
+                    <p className="text-sm mt-1">Încercați să creați NIR-ul manual</p>
+                  </div>
+                ) : (
+                  <ScrollArea className="h-[350px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-border">
+                          <TableHead className="w-10"></TableHead>
+                          <TableHead className="text-muted-foreground">Denumire din PDF</TableHead>
+                          <TableHead className="text-muted-foreground">Produs Potrivit</TableHead>
+                          <TableHead className="text-muted-foreground text-right w-24">Cantitate</TableHead>
+                          <TableHead className="text-muted-foreground text-right w-28">Preț Unit.</TableHead>
+                          <TableHead className="text-muted-foreground text-right w-28">Valoare</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pdfItems.map(item => (
+                          <TableRow 
+                            key={item.idx} 
+                            className={`border-border ${!item.enabled ? 'opacity-40' : ''}`}
+                            data-testid={`pdf-item-${item.idx}`}
+                          >
+                            <TableCell>
+                              <button
+                                onClick={() => togglePdfItem(item.idx)}
+                                className={`w-6 h-6 rounded-sm border flex items-center justify-center transition-colors ${
+                                  item.enabled 
+                                    ? 'bg-primary border-primary text-primary-foreground' 
+                                    : 'border-border text-transparent'
+                                }`}
+                                data-testid={`pdf-toggle-${item.idx}`}
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                            </TableCell>
+                            <TableCell>
+                              <p className="text-foreground text-sm">{item.denumire_pdf}</p>
+                              {item.match_confidence > 0 && item.match_confidence < 80 && (
+                                <p className="text-xs text-yellow-500 mt-0.5">Potrivire: {item.match_confidence}%</p>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Select
+                                value={item.product_id || "_none_"}
+                                onValueChange={(v) => {
+                                  const prod = products.find(p => p.id === v);
+                                  setPdfItems(prev => prev.map(i => 
+                                    i.idx === item.idx 
+                                      ? { ...i, product_id: v === "_none_" ? null : v, product_nume: prod?.nume || null }
+                                      : i
+                                  ));
+                                }}
+                              >
+                                <SelectTrigger className={`h-9 text-sm bg-background border-border ${
+                                  item.product_id ? 'text-foreground' : 'text-destructive'
+                                }`}>
+                                  <SelectValue placeholder="Selectați..." />
+                                </SelectTrigger>
+                                <SelectContent className="bg-card border-border max-h-60">
+                                  <SelectItem value="_none_">-- Neselectat --</SelectItem>
+                                  {products.filter(p => p && p.id).map(p => (
+                                    <SelectItem key={p.id} value={p.id}>{p.nume}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              {item.product_id && item.match_confidence >= 80 && (
+                                <p className="text-xs text-green-500 mt-0.5">Auto-potrivit</p>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={item.cantitate}
+                                onChange={(e) => updatePdfItem(item.idx, 'cantitate', e.target.value)}
+                                className="h-9 w-24 text-right font-mono bg-background border-border text-foreground text-sm"
+                              />
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={item.pret_unitar}
+                                onChange={(e) => updatePdfItem(item.idx, 'pret_unitar', e.target.value)}
+                                className="h-9 w-28 text-right font-mono bg-background border-border text-foreground text-sm"
+                              />
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-sm text-primary font-bold">
+                              {formatCurrency(parseFloat(item.cantitate || 0) * parseFloat(item.pret_unitar || 0))}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                )}
+              </div>
+
+              {/* Total */}
+              {pdfItems.filter(i => i.enabled && i.product_id).length > 0 && (
+                <div className="flex justify-between items-center pt-4 border-t border-border">
+                  <div className="text-sm text-muted-foreground">
+                    {pdfItems.filter(i => i.enabled && !i.product_id).length > 0 && (
+                      <span className="text-yellow-500">
+                        {pdfItems.filter(i => i.enabled && !i.product_id).length} produse fără potrivire (vor fi ignorate)
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-muted-foreground">Total NIR</p>
+                    <p className="font-mono text-2xl font-bold text-primary" data-testid="pdf-nir-total">
+                      {formatCurrency(
+                        pdfItems.filter(i => i.enabled && i.product_id)
+                          .reduce((sum, i) => sum + (parseFloat(i.cantitate || 0) * parseFloat(i.pret_unitar || 0)), 0)
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          <DialogFooter className="gap-2 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowPdfDialog(false)}
+              disabled={pdfParsing || savingPdfNir}
+              className="h-12 px-6 border-border text-foreground"
+            >
+              Anulează
+            </Button>
+            {pdfResult && pdfItems.length > 0 && (
+              <Button
+                data-testid="save-pdf-nir"
+                onClick={submitPdfNir}
+                disabled={savingPdfNir || pdfItems.filter(i => i.enabled && i.product_id).length === 0}
+                className="h-12 px-6 bg-primary text-primary-foreground"
+              >
+                {savingPdfNir ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Se salvează...</>
+                ) : (
+                  <>Salvează NIR ({pdfItems.filter(i => i.enabled && i.product_id).length} produse)</>
+                )}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

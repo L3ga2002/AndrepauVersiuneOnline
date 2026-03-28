@@ -1,6 +1,9 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, UploadFile, File
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import StreamingResponse
+import csv
+import re
+import fitz  # PyMuPDF
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -329,6 +332,221 @@ async def get_products(
         "pages": (total + limit - 1) // limit
     }
 
+
+# ==================== PRODUCTS CSV IMPORT ====================
+
+@api_router.get("/products/csv-template")
+async def get_csv_template(user: dict = Depends(require_admin)):
+    """Download CSV template for product import"""
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Denumire", "Categorie", "Cod Bare", "Pret Achizitie", "Pret Vanzare", "TVA %", "Unitate", "Stoc", "Stoc Minim"])
+    writer.writerow(["Ciment Romcim 40kg", "Materiale Construcții", "5941234567890", "22.50", "29.90", "19", "sac", "100", "10"])
+    writer.writerow(["Fier beton 12mm", "Materiale Construcții", "", "15.00", "19.50", "19", "buc", "200", "20"])
+
+    output.seek(0)
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode('utf-8-sig')),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=template_import_produse.csv"}
+    )
+
+
+@api_router.post("/products/import-csv")
+async def import_products_csv(file: UploadFile = File(...), user: dict = Depends(require_admin)):
+    """Parse CSV file and return preview data for confirmation"""
+    if not file.filename.lower().endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Fișierul trebuie să fie CSV")
+
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Fișierul este prea mare (max 5MB)")
+
+    text = None
+    for encoding in ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']:
+        try:
+            text = content.decode(encoding)
+            break
+        except (UnicodeDecodeError, ValueError):
+            continue
+
+    if text is None:
+        raise HTTPException(status_code=400, detail="Nu am putut citi fișierul. Verificați codificarea.")
+
+    first_line = text.split('\n')[0]
+    delimiter = ';' if ';' in first_line else ','
+
+    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+    rows = list(reader)
+
+    if len(rows) < 2:
+        raise HTTPException(status_code=400, detail="Fișierul trebuie să aibă cel puțin un rând de date (+ header)")
+
+    header = [h.strip().lower() for h in rows[0]]
+
+    col_map = {}
+    name_variants = {"denumire", "nume", "produs", "name", "denumire produs"}
+    cat_variants = {"categorie", "category", "cat"}
+    barcode_variants = {"cod bare", "cod_bare", "barcode", "ean", "cod"}
+    buy_variants = {"pret achizitie", "pret_achizitie", "pret cumparare", "achizitie", "pret achizitie (ron)"}
+    sell_variants = {"pret vanzare", "pret_vanzare", "vanzare", "pret", "pret vanzare (ron)"}
+    tva_variants = {"tva", "tva %", "tva%", "cota tva"}
+    unit_variants = {"unitate", "um", "unit", "unitate masura"}
+    stock_variants = {"stoc", "stock", "cantitate", "stoc disponibil"}
+    min_stock_variants = {"stoc minim", "stoc_minim", "min stock", "stoc min", "stoc minim alerta"}
+
+    for idx, h in enumerate(header):
+        if h in name_variants:
+            col_map["nume"] = idx
+        elif h in cat_variants:
+            col_map["categorie"] = idx
+        elif h in barcode_variants:
+            col_map["cod_bare"] = idx
+        elif h in buy_variants:
+            col_map["pret_achizitie"] = idx
+        elif h in sell_variants:
+            col_map["pret_vanzare"] = idx
+        elif h in tva_variants:
+            col_map["tva"] = idx
+        elif h in unit_variants:
+            col_map["unitate"] = idx
+        elif h in stock_variants:
+            col_map["stoc"] = idx
+        elif h in min_stock_variants:
+            col_map["stoc_minim"] = idx
+
+    if "nume" not in col_map:
+        raise HTTPException(status_code=400, detail="Coloana 'Denumire' este obligatorie în CSV")
+    if "pret_vanzare" not in col_map:
+        raise HTTPException(status_code=400, detail="Coloana 'Pret Vanzare' este obligatorie în CSV")
+
+    parsed = []
+    errors = []
+    existing_products = await db.products.find({}, {"_id": 0, "id": 1, "nume": 1, "cod_bare": 1}).to_list(100000)
+    existing_by_name = {p["nume"].lower(): p for p in existing_products}
+    existing_by_barcode = {p["cod_bare"]: p for p in existing_products if p.get("cod_bare")}
+
+    for row_idx, row in enumerate(rows[1:], start=2):
+        if not row or all(c.strip() == '' for c in row):
+            continue
+
+        try:
+            name = row[col_map["nume"]].strip() if col_map.get("nume") is not None and col_map["nume"] < len(row) else ""
+            if not name:
+                errors.append(f"Rândul {row_idx}: Denumire lipsă")
+                continue
+
+            sell_price_str = row[col_map["pret_vanzare"]].strip() if col_map.get("pret_vanzare") is not None and col_map["pret_vanzare"] < len(row) else "0"
+            sell_price = _parse_number(sell_price_str)
+            if sell_price <= 0:
+                errors.append(f"Rândul {row_idx}: Preț vânzare invalid pentru '{name}'")
+                continue
+
+            barcode = row[col_map["cod_bare"]].strip() if col_map.get("cod_bare") is not None and col_map["cod_bare"] < len(row) else ""
+            category = row[col_map["categorie"]].strip() if col_map.get("categorie") is not None and col_map["categorie"] < len(row) else "Necategorisit"
+            buy_price = _parse_number(row[col_map["pret_achizitie"]].strip()) if col_map.get("pret_achizitie") is not None and col_map["pret_achizitie"] < len(row) else 0
+            tva = _parse_number(row[col_map["tva"]].strip()) if col_map.get("tva") is not None and col_map["tva"] < len(row) else 19
+            unit = row[col_map["unitate"]].strip() if col_map.get("unitate") is not None and col_map["unitate"] < len(row) else "buc"
+            stock = _parse_number(row[col_map["stoc"]].strip()) if col_map.get("stoc") is not None and col_map["stoc"] < len(row) else 0
+            min_stock = _parse_number(row[col_map["stoc_minim"]].strip()) if col_map.get("stoc_minim") is not None and col_map["stoc_minim"] < len(row) else 5
+
+            existing = None
+            action = "create"
+            if barcode and barcode in existing_by_barcode:
+                existing = existing_by_barcode[barcode]
+                action = "update"
+            elif name.lower() in existing_by_name:
+                existing = existing_by_name[name.lower()]
+                action = "update"
+
+            parsed.append({
+                "row": row_idx,
+                "nume": name,
+                "categorie": category,
+                "cod_bare": barcode,
+                "pret_achizitie": buy_price,
+                "pret_vanzare": sell_price,
+                "tva": tva,
+                "unitate": unit if unit in ["buc", "sac", "kg", "metru", "litru", "rola"] else "buc",
+                "stoc": stock,
+                "stoc_minim": min_stock,
+                "action": action,
+                "existing_id": existing["id"] if existing else None,
+                "existing_name": existing["nume"] if existing else None,
+            })
+
+        except (IndexError, ValueError) as e:
+            errors.append(f"Rândul {row_idx}: Eroare la parsare - {str(e)}")
+
+    return {
+        "items": parsed,
+        "errors": errors,
+        "total_parsed": len(parsed),
+        "total_create": len([p for p in parsed if p["action"] == "create"]),
+        "total_update": len([p for p in parsed if p["action"] == "update"]),
+        "columns_found": list(col_map.keys())
+    }
+
+
+@api_router.post("/products/import-csv/confirm")
+async def confirm_import_products_csv(data: dict, user: dict = Depends(require_admin)):
+    """Confirm and execute the CSV import"""
+    items = data.get("items", [])
+    if not items:
+        raise HTTPException(status_code=400, detail="Nu sunt produse de importat")
+
+    created = 0
+    updated = 0
+    errors = []
+
+    for item in items:
+        try:
+            if item.get("action") == "update" and item.get("existing_id"):
+                update_fields = {
+                    "categorie": item["categorie"],
+                    "pret_achizitie": item["pret_achizitie"],
+                    "pret_vanzare": item["pret_vanzare"],
+                    "tva": item["tva"],
+                    "unitate": item["unitate"],
+                    "stoc": item["stoc"],
+                    "stoc_minim": item["stoc_minim"],
+                }
+                if item.get("cod_bare"):
+                    update_fields["cod_bare"] = item["cod_bare"]
+                await db.products.update_one(
+                    {"id": item["existing_id"]},
+                    {"$set": update_fields}
+                )
+                updated += 1
+            else:
+                product_doc = {
+                    "id": str(uuid.uuid4()),
+                    "nume": item["nume"],
+                    "categorie": item["categorie"],
+                    "cod_bare": item.get("cod_bare", ""),
+                    "pret_achizitie": item["pret_achizitie"],
+                    "pret_vanzare": item["pret_vanzare"],
+                    "tva": item["tva"],
+                    "unitate": item["unitate"],
+                    "stoc": item["stoc"],
+                    "stoc_minim": item["stoc_minim"],
+                    "descriere": "",
+                    "furnizor_id": None,
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }
+                await db.products.insert_one(product_doc)
+                created += 1
+        except Exception as e:
+            errors.append(f"Eroare la '{item.get('nume', '?')}': {str(e)}")
+
+    return {
+        "created": created,
+        "updated": updated,
+        "errors": errors,
+        "total": created + updated
+    }
+
+
 @api_router.get("/products/barcode/{barcode}", response_model=ProductResponse)
 async def get_product_by_barcode(barcode: str, user: dict = Depends(get_current_user)):
     product = await db.products.find_one({"cod_bare": barcode}, {"_id": 0})
@@ -581,6 +799,224 @@ async def create_nir(nir: NIRCreate, user: dict = Depends(require_admin)):
 async def get_nirs(user: dict = Depends(get_current_user)):
     nirs = await db.nirs.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
     return [NIRResponse(**n) for n in nirs]
+
+
+@api_router.post("/nir/parse-pdf")
+async def parse_nir_pdf(file: UploadFile = File(...), user: dict = Depends(require_admin)):
+    """Parse a supplier invoice PDF and extract items for NIR creation"""
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Fișierul trebuie să fie PDF")
+
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Fișierul este prea mare (max 10MB)")
+
+    try:
+        doc = fitz.open(stream=content, filetype="pdf")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Fișierul PDF nu a putut fi deschis")
+
+    all_text = ""
+    for page in doc:
+        all_text += page.get_text("text") + "\n"
+    doc.close()
+
+    # Try to extract invoice number
+    invoice_number = ""
+    inv_patterns = [
+        r'(?:factura|fact\.?|fv|invoice)\s*(?:nr\.?|no\.?|numar|#)?\s*[:.]?\s*([A-Z0-9\-\/]+)',
+        r'(?:seria?\s+[A-Z]+\s+nr\.?\s*)(\d+)',
+        r'(?:nr\.?\s*factur[aă])\s*[:.]?\s*([A-Z0-9\-\/]+)',
+    ]
+    for pattern in inv_patterns:
+        match = re.search(pattern, all_text, re.IGNORECASE)
+        if match:
+            invoice_number = match.group(1).strip()
+            break
+
+    # Try to extract supplier name (usually near top, after "Furnizor" or before CUI)
+    supplier_name = ""
+    sup_patterns = [
+        r'(?:furnizor|vanzator|emitent)\s*[:.]?\s*(.+?)(?:\n|CUI|cod\s*fiscal)',
+        r'S\.?C\.?\s+(.+?)\s+S\.?[RA]\.?L\.?',
+    ]
+    for pattern in sup_patterns:
+        match = re.search(pattern, all_text, re.IGNORECASE)
+        if match:
+            supplier_name = match.group(1).strip()
+            break
+
+    # Extract items from the invoice
+    extracted_items = _extract_invoice_items(all_text)
+
+    # Match with existing products
+    products = await db.products.find({}, {"_id": 0, "id": 1, "nume": 1, "cod_bare": 1, "pret_achizitie": 1}).to_list(100000)
+    matched_items = []
+
+    for item in extracted_items:
+        best_match = _find_best_product_match(item["denumire"], products)
+        matched_items.append({
+            "denumire_pdf": item["denumire"],
+            "cantitate": item["cantitate"],
+            "pret_unitar": item["pret_unitar"],
+            "um": item.get("um", "buc"),
+            "valoare": item.get("valoare", round(item["cantitate"] * item["pret_unitar"], 2)),
+            "product_id": best_match["id"] if best_match else None,
+            "product_nume": best_match["nume"] if best_match else None,
+            "match_confidence": best_match["confidence"] if best_match else 0,
+        })
+
+    return {
+        "invoice_number": invoice_number,
+        "supplier_name": supplier_name,
+        "items": matched_items,
+        "raw_text_preview": all_text[:2000],
+        "total_items": len(matched_items)
+    }
+
+
+def _extract_invoice_items(text: str) -> list:
+    """Extract line items from invoice text using multiple strategies"""
+    items = []
+    lines = text.split('\n')
+    lines = [l.strip() for l in lines if l.strip()]
+
+    # Strategy 1: Look for table rows with numbers pattern
+    # Common pattern: Nr | Denumire | UM | Cantitate | Pret | Valoare
+    number_pattern = re.compile(
+        r'^\s*(\d{1,3})\s*[.\)]\s*'  # row number
+        r'(.+?)\s+'                   # product name
+        r'(\d+[.,]?\d*)\s+'           # quantity
+        r'(\d+[.,]?\d*)\s*$'          # price
+    )
+
+    # Strategy 2: Lines with price-like patterns
+    price_pattern = re.compile(
+        r'(.+?)\s+'                   # product name
+        r'(buc|sac|kg|m[l2]?|litru?|rola|set|mp|mc|to|l)\s+'  # unit of measure
+        r'(\d+[.,]?\d*)\s+'           # quantity
+        r'(\d+[.,]?\d*)\s+'           # unit price
+        r'(\d+[.,]?\d*)'              # total value
+    , re.IGNORECASE)
+
+    # Strategy 3: More flexible pattern with decimal numbers
+    flex_pattern = re.compile(
+        r'(.{5,60}?)\s+'             # product name (5-60 chars)
+        r'(\d+[.,]?\d{0,3})\s+'      # quantity
+        r'(\d+[.,]?\d{0,2})\s+'      # price
+        r'(\d+[.,]?\d{0,2})'         # total
+    )
+
+    seen_names = set()
+
+    for i, line in enumerate(lines):
+        # Skip header-like lines
+        lower = line.lower()
+        if any(h in lower for h in ['denumire', 'produs', 'nr.crt', 'nr. crt', 'cantitate', 'total general',
+                                      'subtotal', 'tva', 'baza impozabila', 'de plata', 'cont', 'banca',
+                                      'factura', 'seria', 'furnizor', 'cumparator', 'adresa', 'delegat',
+                                      'cota tva', 'valoare tva']):
+            continue
+
+        item = None
+
+        # Try strategy 2 first (most specific)
+        m = price_pattern.search(line)
+        if m:
+            name = m.group(1).strip()
+            um = m.group(2).strip().lower()
+            qty = _parse_number(m.group(3))
+            price = _parse_number(m.group(4))
+            total = _parse_number(m.group(5))
+            if qty > 0 and price > 0 and len(name) > 2:
+                item = {"denumire": name, "um": um, "cantitate": qty, "pret_unitar": price, "valoare": total}
+
+        # Try strategy 1
+        if not item:
+            m = number_pattern.match(line)
+            if m:
+                name = m.group(2).strip()
+                qty = _parse_number(m.group(3))
+                price = _parse_number(m.group(4))
+                if qty > 0 and price > 0 and len(name) > 2:
+                    item = {"denumire": name, "um": "buc", "cantitate": qty, "pret_unitar": price, "valoare": round(qty * price, 2)}
+
+        # Try strategy 3 (flexible)
+        if not item:
+            m = flex_pattern.search(line)
+            if m:
+                name = m.group(1).strip()
+                qty = _parse_number(m.group(2))
+                price = _parse_number(m.group(3))
+                total = _parse_number(m.group(4))
+                # Validate: total should be roughly qty * price
+                expected = qty * price
+                if qty > 0 and price > 0 and len(name) > 2 and (abs(expected - total) < 1 or total > 0):
+                    # Skip if name looks like it's a number or date
+                    if not re.match(r'^\d', name) and not re.match(r'^\d{1,2}[./]\d{1,2}[./]\d{2,4}', name):
+                        item = {"denumire": name, "um": "buc", "cantitate": qty, "pret_unitar": price, "valoare": total}
+
+        if item and item["denumire"] not in seen_names:
+            seen_names.add(item["denumire"])
+            items.append(item)
+
+    return items
+
+
+def _parse_number(s: str) -> float:
+    """Parse a number string that might use comma as decimal separator"""
+    s = s.strip()
+    # If has both . and , => the last one is the decimal separator
+    if '.' in s and ',' in s:
+        if s.rindex('.') > s.rindex(','):
+            s = s.replace(',', '')
+        else:
+            s = s.replace('.', '').replace(',', '.')
+    elif ',' in s:
+        s = s.replace(',', '.')
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
+
+
+def _find_best_product_match(pdf_name: str, products: list) -> dict | None:
+    """Find best matching product by name similarity"""
+    if not pdf_name or not products:
+        return None
+
+    pdf_lower = pdf_name.lower().strip()
+    best = None
+    best_score = 0
+
+    for p in products:
+        prod_lower = p["nume"].lower().strip()
+
+        # Exact match
+        if pdf_lower == prod_lower:
+            return {"id": p["id"], "nume": p["nume"], "confidence": 100}
+
+        # Containment check
+        if pdf_lower in prod_lower or prod_lower in pdf_lower:
+            score = 80
+            if score > best_score:
+                best_score = score
+                best = {"id": p["id"], "nume": p["nume"], "confidence": score}
+            continue
+
+        # Word overlap
+        pdf_words = set(pdf_lower.split())
+        prod_words = set(prod_lower.split())
+        if pdf_words and prod_words:
+            overlap = len(pdf_words & prod_words)
+            total = max(len(pdf_words), len(prod_words))
+            score = int((overlap / total) * 70)
+            if score > best_score and score >= 30:
+                best_score = score
+                best = {"id": p["id"], "nume": p["nume"], "confidence": score}
+
+    return best
+
 
 # ==================== STOCK ROUTES ====================
 

@@ -10,7 +10,7 @@ import { ScrollArea } from '../components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { formatCurrency, formatNumber, formatDate, getStockStatus } from '../lib/utils';
-import { Package, AlertTriangle, TrendingDown, Archive, Plus, Trash2, FileText, Upload, FileUp, Check, X, Loader2 } from 'lucide-react';
+import { Package, AlertTriangle, TrendingDown, Archive, Plus, Trash2, FileText, Upload, FileUp, Check, X, Loader2, ScanLine } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function StockPage() {
@@ -39,6 +39,11 @@ export default function StockPage() {
   const [pdfInvoiceNumber, setPdfInvoiceNumber] = useState('');
   const [pdfSupplierId, setPdfSupplierId] = useState('');
   const [savingPdfNir, setSavingPdfNir] = useState(false);
+
+  // Post-NIR Barcode state
+  const [showBarcodeDialog, setShowBarcodeDialog] = useState(false);
+  const [barcodeItems, setBarcodeItems] = useState([]);
+  const [savingBarcodes, setSavingBarcodes] = useState(false);
 
   const fetchDashboard = useCallback(async () => {
     try {
@@ -159,6 +164,14 @@ export default function StockPage() {
       if (response.ok) {
         toast.success('NIR creat cu succes');
         setShowNirDialog(false);
+        // Open barcode dialog with the items from this NIR
+        const nirItems = nirForm.items.map(item => ({
+          product_id: item.product_id,
+          nume: item.nume,
+          cod_bare: ''
+        }));
+        setBarcodeItems(nirItems);
+        setShowBarcodeDialog(true);
         setNirForm({ furnizor_id: '', numar_factura: '', items: [] });
         fetchNirs();
         fetchDashboard();
@@ -295,6 +308,14 @@ export default function StockPage() {
       if (response.ok) {
         toast.success('NIR creat din PDF cu succes');
         setShowPdfDialog(false);
+        // Open barcode dialog with the items from this NIR
+        const nirItems = enabledItems.filter(i => i.product_id).map(item => ({
+          product_id: item.product_id,
+          nume: item.product_nume || item.denumire_pdf,
+          cod_bare: ''
+        }));
+        setBarcodeItems(nirItems);
+        setShowBarcodeDialog(true);
         setPdfResult(null);
         setPdfItems([]);
         fetchNirs();
@@ -313,6 +334,51 @@ export default function StockPage() {
   };
 
   const pdfFileRef = React.useRef(null);
+
+  // Barcode update functions
+  const updateBarcodeItem = (idx, value) => {
+    setBarcodeItems(prev => prev.map((item, i) => 
+      i === idx ? { ...item, cod_bare: value } : item
+    ));
+  };
+
+  const saveBarcodes = async () => {
+    const toUpdate = barcodeItems.filter(i => i.cod_bare.trim());
+    if (toUpdate.length === 0) {
+      setShowBarcodeDialog(false);
+      return;
+    }
+
+    setSavingBarcodes(true);
+    try {
+      const response = await fetch(`${API_URL}/products/bulk-barcode`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          updates: toUpdate.map(i => ({
+            product_id: i.product_id,
+            cod_bare: i.cod_bare.trim()
+          }))
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        toast.success(`${result.updated} coduri de bare actualizate`);
+        fetchProducts();
+      } else {
+        toast.error('Eroare la salvare coduri de bare');
+      }
+    } catch (error) {
+      toast.error('Eroare la salvare coduri de bare');
+    } finally {
+      setSavingBarcodes(false);
+      setShowBarcodeDialog(false);
+    }
+  };
 
   return (
     <div className="p-6 space-y-6" data-testid="stock-page">
@@ -966,6 +1032,85 @@ export default function StockPage() {
                 )}
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Post-NIR Barcode Dialog */}
+      <Dialog open={showBarcodeDialog} onOpenChange={(open) => { if (!savingBarcodes) setShowBarcodeDialog(open); }}>
+        <DialogContent className="bg-card border-border max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="barcode-dialog">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-xl uppercase text-foreground flex items-center gap-3">
+              <ScanLine className="w-6 h-6 text-primary" />
+              Coduri de Bare - Produse din NIR
+            </DialogTitle>
+          </DialogHeader>
+
+          <p className="text-sm text-muted-foreground">
+            Scanați sau introduceți codurile de bare pentru produsele din acest NIR. Puteți sări peste produsele care au deja cod de bare.
+          </p>
+
+          <div className="space-y-3 mt-4">
+            {barcodeItems.map((item, idx) => {
+              const existingProduct = products.find(p => p.id === item.product_id);
+              const hasExistingBarcode = existingProduct?.cod_bare;
+              return (
+                <div 
+                  key={idx} 
+                  className="flex items-center gap-3 p-3 bg-secondary/20 rounded-sm"
+                  data-testid={`barcode-item-${idx}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-foreground font-medium text-sm truncate">{item.nume}</p>
+                    {hasExistingBarcode && (
+                      <p className="text-xs text-muted-foreground font-mono">Actual: {existingProduct.cod_bare}</p>
+                    )}
+                  </div>
+                  <div className="w-52">
+                    <Input
+                      data-testid={`barcode-input-${idx}`}
+                      value={item.cod_bare}
+                      onChange={(e) => updateBarcodeItem(idx, e.target.value)}
+                      placeholder={hasExistingBarcode ? "Păstrează actual" : "Scanați cod bare"}
+                      className="h-10 bg-background border-border text-foreground font-mono text-sm"
+                      autoFocus={idx === 0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          // Focus next input
+                          const nextInput = document.querySelector(`[data-testid="barcode-input-${idx + 1}"]`);
+                          if (nextInput) nextInput.focus();
+                          else saveBarcodes();
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <DialogFooter className="gap-2 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowBarcodeDialog(false)}
+              disabled={savingBarcodes}
+              className="h-12 px-6 border-border text-foreground"
+              data-testid="skip-barcodes-btn"
+            >
+              Sari peste
+            </Button>
+            <Button
+              data-testid="save-barcodes-btn"
+              onClick={saveBarcodes}
+              disabled={savingBarcodes || barcodeItems.every(i => !i.cod_bare.trim())}
+              className="h-12 px-6 bg-primary text-primary-foreground"
+            >
+              {savingBarcodes ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Se salvează...</>
+              ) : (
+                <>Salvează Coduri de Bare ({barcodeItems.filter(i => i.cod_bare.trim()).length})</>
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

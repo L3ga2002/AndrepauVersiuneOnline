@@ -801,6 +801,28 @@ async def get_nirs(user: dict = Depends(get_current_user)):
     return [NIRResponse(**n) for n in nirs]
 
 
+@api_router.post("/products/bulk-barcode")
+async def bulk_update_barcodes(data: dict, user: dict = Depends(require_admin)):
+    """Update barcodes for multiple products at once (after NIR)"""
+    updates = data.get("updates", [])
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nu sunt actualizări")
+
+    updated = 0
+    for upd in updates:
+        product_id = upd.get("product_id")
+        barcode = upd.get("cod_bare", "").strip()
+        if product_id and barcode:
+            result = await db.products.update_one(
+                {"id": product_id},
+                {"$set": {"cod_bare": barcode}}
+            )
+            if result.modified_count > 0:
+                updated += 1
+
+    return {"updated": updated, "total": len(updates)}
+
+
 @api_router.post("/nir/parse-pdf")
 async def parse_nir_pdf(file: UploadFile = File(...), user: dict = Depends(require_admin)):
     """Parse a supplier invoice PDF and extract items for NIR creation"""
@@ -817,27 +839,31 @@ async def parse_nir_pdf(file: UploadFile = File(...), user: dict = Depends(requi
         raise HTTPException(status_code=400, detail="Fișierul PDF nu a putut fi deschis")
 
     all_text = ""
+    all_blocks = []
     for page in doc:
         all_text += page.get_text("text") + "\n"
+        for block in page.get_text("blocks"):
+            if block[6] == 0:  # text blocks only
+                all_blocks.append(block[4])
     doc.close()
 
     # Try to extract invoice number
     invoice_number = ""
     inv_patterns = [
-        r'(?:factura|fact\.?|fv|invoice)\s*(?:nr\.?|no\.?|numar|#)?\s*[:.]?\s*([A-Z0-9\-\/]+)',
+        r'(?:factura|fact\.?|fv|invoice)\s*(?:nr\.?|no\.?|numar|#)?\s*[:.]?\s*\n?\s*([A-Z0-9\-\/\s]+)',
+        r'(?:TOP|SER|FV|FC)\s+(\d{5,})',
         r'(?:seria?\s+[A-Z]+\s+nr\.?\s*)(\d+)',
-        r'(?:nr\.?\s*factur[aă])\s*[:.]?\s*([A-Z0-9\-\/]+)',
     ]
     for pattern in inv_patterns:
         match = re.search(pattern, all_text, re.IGNORECASE)
         if match:
-            invoice_number = match.group(1).strip()
+            invoice_number = match.group(1).strip().split('\n')[0].strip()
             break
 
-    # Try to extract supplier name (usually near top, after "Furnizor" or before CUI)
+    # Try to extract supplier name
     supplier_name = ""
     sup_patterns = [
-        r'(?:furnizor|vanzator|emitent)\s*[:.]?\s*(.+?)(?:\n|CUI|cod\s*fiscal)',
+        r'(?:furnizor|vanzator|emitent)\s*[:.]?\s*\n?\s*(.+?)(?:\n|CUI|cod\s*fiscal|Reg)',
         r'S\.?C\.?\s+(.+?)\s+S\.?[RA]\.?L\.?',
     ]
     for pattern in sup_patterns:
@@ -846,8 +872,12 @@ async def parse_nir_pdf(file: UploadFile = File(...), user: dict = Depends(requi
             supplier_name = match.group(1).strip()
             break
 
-    # Extract items from the invoice
-    extracted_items = _extract_invoice_items(all_text)
+    # Extract items using blocks (primary strategy for e-Factura PDFs)
+    extracted_items = _extract_items_from_blocks(all_blocks)
+
+    # Fallback to line-by-line parsing if blocks didn't work
+    if not extracted_items:
+        extracted_items = _extract_items_from_lines(all_text)
 
     # Match with existing products
     products = await db.products.find({}, {"_id": 0, "id": 1, "nume": 1, "cod_bare": 1, "pret_achizitie": 1}).to_list(100000)
@@ -875,90 +905,146 @@ async def parse_nir_pdf(file: UploadFile = File(...), user: dict = Depends(requi
     }
 
 
-def _extract_invoice_items(text: str) -> list:
-    """Extract line items from invoice text using multiple strategies"""
+def _extract_items_from_blocks(blocks: list) -> list:
+    """Extract items from PyMuPDF text blocks - works with e-Factura and standard Romanian invoices.
+    Each product row is typically a single block with fields separated by newlines:
+    'Nr\\nDenumire\\nUM\\nCantitate\\nPretUnitar\\nValoare\\nTVA\\n'
+    """
     items = []
-    lines = text.split('\n')
-    lines = [l.strip() for l in lines if l.strip()]
+    um_set = {"buc", "sac", "kg", "m", "ml", "m2", "mp", "mc", "litru", "l", "rola", "set", "to", "pach", "pac", "fl", "cutie", "cmp"}
 
-    # Strategy 1: Look for table rows with numbers pattern
-    # Common pattern: Nr | Denumire | UM | Cantitate | Pret | Valoare
-    number_pattern = re.compile(
-        r'^\s*(\d{1,3})\s*[.\)]\s*'  # row number
-        r'(.+?)\s+'                   # product name
-        r'(\d+[.,]?\d*)\s+'           # quantity
-        r'(\d+[.,]?\d*)\s*$'          # price
-    )
-
-    # Strategy 2: Lines with price-like patterns
-    price_pattern = re.compile(
-        r'(.+?)\s+'                   # product name
-        r'(buc|sac|kg|m[l2]?|litru?|rola|set|mp|mc|to|l)\s+'  # unit of measure
-        r'(\d+[.,]?\d*)\s+'           # quantity
-        r'(\d+[.,]?\d*)\s+'           # unit price
-        r'(\d+[.,]?\d*)'              # total value
-    , re.IGNORECASE)
-
-    # Strategy 3: More flexible pattern with decimal numbers
-    flex_pattern = re.compile(
-        r'(.{5,60}?)\s+'             # product name (5-60 chars)
-        r'(\d+[.,]?\d{0,3})\s+'      # quantity
-        r'(\d+[.,]?\d{0,2})\s+'      # price
-        r'(\d+[.,]?\d{0,2})'         # total
-    )
-
-    seen_names = set()
-
-    for i, line in enumerate(lines):
-        # Skip header-like lines
-        lower = line.lower()
-        if any(h in lower for h in ['denumire', 'produs', 'nr.crt', 'nr. crt', 'cantitate', 'total general',
-                                      'subtotal', 'tva', 'baza impozabila', 'de plata', 'cont', 'banca',
-                                      'factura', 'seria', 'furnizor', 'cumparator', 'adresa', 'delegat',
-                                      'cota tva', 'valoare tva']):
+    for block_text in blocks:
+        parts = [p.strip() for p in block_text.strip().split('\n') if p.strip()]
+        if len(parts) < 4:
             continue
 
-        item = None
+        # Check if first part is a row number (1, 2, 3, etc.)
+        first = parts[0]
+        if not re.match(r'^\d{1,4}$', first):
+            continue
 
-        # Try strategy 2 first (most specific)
-        m = price_pattern.search(line)
-        if m:
-            name = m.group(1).strip()
-            um = m.group(2).strip().lower()
-            qty = _parse_number(m.group(3))
-            price = _parse_number(m.group(4))
-            total = _parse_number(m.group(5))
+        row_num = int(first)
+        if row_num < 1 or row_num > 999:
+            continue
+
+        # Try to parse: Nr, Denumire, UM, Cantitate, PretUnitar, [Valoare], [TVA]
+        # Find the UM field - it tells us where quantity starts
+        um_idx = None
+        for i, part in enumerate(parts[1:], 1):
+            if part.lower() in um_set:
+                um_idx = i
+                break
+
+        if um_idx is not None and um_idx + 2 < len(parts):
+            # Standard format: Nr | Denumire | UM | Cant | Pret | Valoare | TVA
+            name = ' '.join(parts[1:um_idx])
+            um = parts[um_idx].lower()
+            qty = _parse_number(parts[um_idx + 1])
+            price = _parse_number(parts[um_idx + 2])
+            valoare = _parse_number(parts[um_idx + 3]) if um_idx + 3 < len(parts) else round(qty * price, 2)
+
             if qty > 0 and price > 0 and len(name) > 2:
-                item = {"denumire": name, "um": um, "cantitate": qty, "pret_unitar": price, "valoare": total}
+                items.append({
+                    "denumire": name,
+                    "um": um if um in um_set else "buc",
+                    "cantitate": qty,
+                    "pret_unitar": price,
+                    "valoare": valoare
+                })
+        else:
+            # Try without UM: Nr | Denumire | Cant | Pret | Valoare
+            # Find where numbers start (after name)
+            num_start = None
+            for i in range(1, len(parts)):
+                cleaned = parts[i].replace(',', '.').replace(' ', '')
+                try:
+                    float(cleaned)
+                    num_start = i
+                    break
+                except ValueError:
+                    continue
 
-        # Try strategy 1
-        if not item:
-            m = number_pattern.match(line)
-            if m:
-                name = m.group(2).strip()
-                qty = _parse_number(m.group(3))
-                price = _parse_number(m.group(4))
-                if qty > 0 and price > 0 and len(name) > 2:
-                    item = {"denumire": name, "um": "buc", "cantitate": qty, "pret_unitar": price, "valoare": round(qty * price, 2)}
+            if num_start is not None and num_start > 1:
+                name = ' '.join(parts[1:num_start])
+                numbers = []
+                for p in parts[num_start:]:
+                    val = _parse_number(p)
+                    if val > 0:
+                        numbers.append(val)
 
-        # Try strategy 3 (flexible)
-        if not item:
-            m = flex_pattern.search(line)
-            if m:
-                name = m.group(1).strip()
-                qty = _parse_number(m.group(2))
-                price = _parse_number(m.group(3))
-                total = _parse_number(m.group(4))
-                # Validate: total should be roughly qty * price
-                expected = qty * price
-                if qty > 0 and price > 0 and len(name) > 2 and (abs(expected - total) < 1 or total > 0):
-                    # Skip if name looks like it's a number or date
-                    if not re.match(r'^\d', name) and not re.match(r'^\d{1,2}[./]\d{1,2}[./]\d{2,4}', name):
-                        item = {"denumire": name, "um": "buc", "cantitate": qty, "pret_unitar": price, "valoare": total}
+                if len(numbers) >= 2:
+                    qty = numbers[0]
+                    price = numbers[1]
+                    valoare = numbers[2] if len(numbers) > 2 else round(qty * price, 2)
+                    if len(name) > 2:
+                        items.append({
+                            "denumire": name,
+                            "um": "buc",
+                            "cantitate": qty,
+                            "pret_unitar": price,
+                            "valoare": valoare
+                        })
 
-        if item and item["denumire"] not in seen_names:
-            seen_names.add(item["denumire"])
-            items.append(item)
+    return items
+
+
+def _extract_items_from_lines(text: str) -> list:
+    """Fallback: extract items from text line by line for non-block PDFs"""
+    items = []
+    lines = text.split('\n')
+    lines = [ln.strip() for ln in lines if ln.strip()]
+
+    skip_words = {'denumire', 'produs', 'nr.crt', 'nr. crt', 'cantitate', 'total general',
+                  'subtotal', 'tva', 'baza impozabila', 'de plata', 'cont', 'banca',
+                  'factura', 'seria', 'furnizor', 'cumparator', 'adresa', 'delegat',
+                  'cota tva', 'valoare tva', 'index', 'livrare', 'intocmit', 'semnatura'}
+
+    seen_names = set()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        lower = line.lower()
+        if any(h in lower for h in skip_words):
+            i += 1
+            continue
+
+        # Check if line starts with a row number
+        m = re.match(r'^(\d{1,3})\s*$', line)
+        if m:
+            row_num = int(m.group(1))
+            if 1 <= row_num <= 999 and i + 3 < len(lines):
+                # Next lines should be: name, [um], qty, price, value
+                name = lines[i + 1].strip()
+                if name.lower() in skip_words or re.match(r'^\d+[.,]?\d*$', name):
+                    i += 1
+                    continue
+
+                # Look ahead for numbers
+                remaining = lines[i + 2:i + 8]
+                um = "buc"
+                numbers = []
+                for r_line in remaining:
+                    r_clean = r_line.strip().lower()
+                    if r_clean in {"buc", "sac", "kg", "m", "ml", "m2", "mp", "mc", "litru", "l", "rola", "set"}:
+                        um = r_clean
+                        continue
+                    val = _parse_number(r_line)
+                    if val > 0:
+                        numbers.append(val)
+                    elif r_line.strip() and not re.match(r'^[\d.,\s]+$', r_line.strip()):
+                        break
+
+                if len(numbers) >= 2 and name not in seen_names:
+                    seen_names.add(name)
+                    items.append({
+                        "denumire": name,
+                        "um": um,
+                        "cantitate": numbers[0],
+                        "pret_unitar": numbers[1],
+                        "valoare": numbers[2] if len(numbers) > 2 else round(numbers[0] * numbers[1], 2)
+                    })
+
+        i += 1
 
     return items
 

@@ -331,9 +331,10 @@ async def get_products(
     if price:
         try:
             price_val = float(price.strip().replace(',', '.'))
+            # Exact match or very close (±0.10 RON)
             conditions.append({"$or": [
-                {"pret_vanzare": {"$gte": price_val - 2, "$lte": price_val + 2}},
-                {"pret_achizitie": {"$gte": price_val - 2, "$lte": price_val + 2}},
+                {"pret_vanzare": {"$gte": round(price_val - 0.10, 2), "$lte": round(price_val + 0.10, 2)}},
+                {"pret_achizitie": {"$gte": round(price_val - 0.10, 2), "$lte": round(price_val + 0.10, 2)}},
             ]})
         except ValueError:
             pass

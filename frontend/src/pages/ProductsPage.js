@@ -320,6 +320,12 @@ export default function ProductsPage() {
     if (!file) return;
     e.target.value = '';
 
+    const ext = file.name.toLowerCase();
+    if (!ext.endsWith('.csv') && !ext.endsWith('.xlsx') && !ext.endsWith('.xls')) {
+      toast.error('Fișierul trebuie să fie .xlsx sau .csv');
+      return;
+    }
+
     setCsvParsing(true);
     setCsvResult(null);
     setCsvItems([]);
@@ -410,7 +416,7 @@ export default function ProductsPage() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'template_import_produse.csv';
+        a.download = 'template_import_produse.xlsx';
         a.click();
         URL.revokeObjectURL(url);
       }
@@ -437,7 +443,7 @@ export default function ProductsPage() {
             <input
               ref={csvFileRef}
               type="file"
-              accept=".csv"
+              accept=".csv,.xlsx,.xls"
               className="hidden"
               onChange={handleCsvUpload}
               data-testid="csv-file-input"
@@ -449,7 +455,7 @@ export default function ProductsPage() {
               className="h-12 px-4 border-border text-muted-foreground"
             >
               <Download className="w-5 h-5 mr-2" />
-              Template CSV
+              Template Excel
             </Button>
             <Button
               data-testid="import-csv-btn"
@@ -458,7 +464,7 @@ export default function ProductsPage() {
               className="h-12 px-4 border-border text-foreground"
             >
               <Upload className="w-5 h-5 mr-2" />
-              Import CSV
+              Import Excel/CSV
             </Button>
             <Button
               data-testid="add-product-btn"
@@ -903,7 +909,7 @@ export default function ProductsPage() {
           <DialogHeader>
             <DialogTitle className="font-heading text-xl uppercase text-foreground flex items-center gap-3">
               <Upload className="w-6 h-6 text-primary" />
-              Import Produse din CSV
+              Import Produse
             </DialogTitle>
           </DialogHeader>
 

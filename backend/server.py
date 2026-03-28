@@ -365,52 +365,139 @@ async def get_products(
 
 @api_router.get("/products/csv-template")
 async def get_csv_template(user: dict = Depends(require_admin)):
-    """Download CSV template for product import"""
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["Denumire", "Categorie", "Cod Bare", "Pret Achizitie", "Pret Vanzare", "TVA %", "Unitate", "Stoc", "Stoc Minim"])
-    writer.writerow(["Ciment Romcim 40kg", "Materiale Construcții", "5941234567890", "22.50", "29.90", "19", "sac", "100", "10"])
-    writer.writerow(["Fier beton 12mm", "Materiale Construcții", "", "15.00", "19.50", "19", "buc", "200", "20"])
+    """Download Excel template for product import"""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Import Produse"
+
+    # Headers
+    headers = ["Denumire", "Categorie", "Cod Bare", "Preț Achiziție", "Preț Vânzare", "TVA %", "Unitate", "Stoc", "Stoc Minim"]
+    header_fill = PatternFill(start_color="1a1a2e", end_color="1a1a2e", fill_type="solid")
+    header_font = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
+    thin_border = Border(
+        left=Side(style='thin', color='555555'),
+        right=Side(style='thin', color='555555'),
+        top=Side(style='thin', color='555555'),
+        bottom=Side(style='thin', color='555555')
+    )
+
+    for col_idx, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        cell.border = thin_border
+
+    # Column widths
+    widths = [35, 25, 18, 16, 16, 10, 12, 10, 12]
+    for i, w in enumerate(widths, 1):
+        ws.column_dimensions[chr(64 + i)].width = w
+
+    # Example data
+    example_data = [
+        ["Ciment Romcim 40kg", "Materiale Construcții", "5941234567890", 22.50, 29.90, 19, "sac", 100, 10],
+        ["Fier beton 12mm PC52", "Materiale Construcții", "5941234567891", 38.00, 49.50, 19, "buc", 200, 20],
+        ["Vopsea lavabilă albă 15L", "Vopsele", "", 65.00, 85.00, 19, "buc", 30, 5],
+        ["Adeziv gresie 25kg", "Adezivi", "5941234567893", 22.00, 28.90, 19, "sac", 50, 10],
+        ["Polistiren expandat 10cm", "Izolații", "", 9.50, 12.50, 19, "mp", 100, 20],
+    ]
+
+    data_font = Font(name="Calibri", size=11)
+    price_format = '#,##0.00'
+    yellow_fill = PatternFill(start_color="FFF9E6", end_color="FFF9E6", fill_type="solid")
+
+    for row_idx, row_data in enumerate(example_data, 2):
+        bg = yellow_fill if row_idx % 2 == 0 else None
+        for col_idx, value in enumerate(row_data, 1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.font = data_font
+            cell.border = thin_border
+            cell.alignment = Alignment(horizontal='left' if col_idx <= 3 else 'center')
+            if bg:
+                cell.fill = bg
+            if col_idx in [4, 5]:
+                cell.number_format = price_format
+                cell.alignment = Alignment(horizontal='right')
+
+    # Instructions row
+    ws.cell(row=8, column=1, value="INSTRUCȚIUNI:").font = Font(bold=True, color="FF6600", size=10)
+    ws.cell(row=9, column=1, value="- Coloana 'Denumire' și 'Preț Vânzare' sunt OBLIGATORII").font = Font(size=9, color="666666")
+    ws.cell(row=10, column=1, value="- Completați 'Cod Bare' pentru potrivire automată la import").font = Font(size=9, color="666666")
+    ws.cell(row=11, column=1, value="- Unitate: buc, sac, kg, metru, litru, rola").font = Font(size=9, color="666666")
+    ws.cell(row=12, column=1, value="- Ștergeți exemplele de mai sus și completați cu produsele dvs.").font = Font(size=9, color="666666")
+    ws.cell(row=13, column=1, value="- Salvați ca .xlsx sau .csv apoi importați din aplicație").font = Font(size=9, color="666666")
+
+    ws.row_dimensions[1].height = 30
+    ws.freeze_panes = 'A2'
+
+    output = io.BytesIO()
+    wb.save(output)
     output.seek(0)
+
     return StreamingResponse(
-        io.BytesIO(output.getvalue().encode('utf-8-sig')),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=template_import_produse.csv"}
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=template_import_produse.xlsx"}
     )
 
 
 @api_router.post("/products/import-csv")
-async def import_products_csv(file: UploadFile = File(...), user: dict = Depends(require_admin)):
-    """Parse CSV file and return preview data for confirmation"""
-    if not file.filename.lower().endswith('.csv'):
-        raise HTTPException(status_code=400, detail="Fișierul trebuie să fie CSV")
+async def import_products_file(file: UploadFile = File(...), user: dict = Depends(require_admin)):
+    """Parse CSV or Excel file and return preview data for confirmation"""
+    fname = file.filename.lower()
+    if not (fname.endswith('.csv') or fname.endswith('.xlsx') or fname.endswith('.xls')):
+        raise HTTPException(status_code=400, detail="Fișierul trebuie să fie .xlsx sau .csv")
 
     content = await file.read()
-    if len(content) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Fișierul este prea mare (max 5MB)")
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Fișierul este prea mare (max 10MB)")
 
-    text = None
-    for encoding in ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']:
+    rows = []
+    if fname.endswith('.xlsx') or fname.endswith('.xls'):
+        # Parse Excel
+        from openpyxl import load_workbook
         try:
-            text = content.decode(encoding)
-            break
-        except (UnicodeDecodeError, ValueError):
-            continue
-
-    if text is None:
-        raise HTTPException(status_code=400, detail="Nu am putut citi fișierul. Verificați codificarea.")
-
-    first_line = text.split('\n')[0]
-    delimiter = ';' if ';' in first_line else ','
-
-    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
-    rows = list(reader)
+            wb = load_workbook(filename=io.BytesIO(content), read_only=True, data_only=True)
+            ws = wb.active
+            for row in ws.iter_rows(values_only=True):
+                str_row = [str(c).strip() if c is not None else '' for c in row]
+                if any(c for c in str_row):
+                    rows.append(str_row)
+            wb.close()
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Eroare la citire Excel: {str(e)}")
+    else:
+        # Parse CSV
+        text = None
+        for encoding in ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']:
+            try:
+                text = content.decode(encoding)
+                break
+            except (UnicodeDecodeError, ValueError):
+                continue
+        if text is None:
+            raise HTTPException(status_code=400, detail="Nu am putut citi fișierul. Verificați codificarea.")
+        first_line = text.split('\n')[0]
+        delimiter = ';' if ';' in first_line else ','
+        reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+        rows = list(reader)
 
     if len(rows) < 2:
         raise HTTPException(status_code=400, detail="Fișierul trebuie să aibă cel puțin un rând de date (+ header)")
 
-    header = [h.strip().lower() for h in rows[0]]
+    # Normalize headers - strip diacritics for matching
+    def _strip_diacritics(s):
+        replacements = {'ă': 'a', 'â': 'a', 'î': 'i', 'ș': 's', 'ț': 't',
+                        'Ă': 'A', 'Â': 'A', 'Î': 'I', 'Ș': 'S', 'Ț': 'T',
+                        'ş': 's', 'ţ': 't'}
+        for old, new in replacements.items():
+            s = s.replace(old, new)
+        return s
+
+    header = [_strip_diacritics(h.strip().lower()) for h in rows[0]]
 
     col_map = {}
     name_variants = {"denumire", "nume", "produs", "name", "denumire produs"}

@@ -8,7 +8,7 @@ Aplicatie completa de gestiune magazin si POS (Point of Sale) pentru magazinul d
 - **Backend**: FastAPI + Python + MongoDB
 - **Bridge Fiscal Local**: Python script (ruleaza pe PC-ul din magazin, polling cloud)
 - **Comunicare Hardware**: Cloud Queue → Bridge polls → SuccesDrv → ONLINE.TXT → INCOTEX Succes M7
-- **Desktop (Electron)**: Setup complet, comunica direct cu bridge-ul local (fara cloud) - permite bonuri offline
+- **Desktop (Electron)**: Setup complet, comunica direct cu bridge-ul local - PAUZA
 
 ## Credentiale
 - Admin: `admin` / `admin123`
@@ -17,32 +17,28 @@ Aplicatie completa de gestiune magazin si POS (Point of Sale) pentru magazinul d
 ## Ce s-a implementat
 
 ### Complet (Functional)
-1. **Sistem de autentificare** - JWT, roluri admin/casier
-2. **Gestiune produse** - CRUD complet, import Excel, categorii, cod bare
-3. **Pagina POS** - Vanzare cu cos, cautare, categorii, discount, factura cu CUI
-4. **Integrare Bridge Fiscal (Cloud Polling)** - PWA → Cloud API → Bridge polls → Printer
-5. **Operatiuni Casa** - Raport X/Z, Intrare/Iesire numerar, Deschide sertar, Istoric
-6. **Bridge Service v3.0** - Cloud polling, comenzi corecte din Manual SuccesDRV 8.5
-7. **Descarcare Bridge ZIP** - Endpoint /api/bridge/download-direct
-8. **Stoc & Inventar** - Dashboard, export Excel
-9. **Rapoarte** - Vanzari pe zi/luna, top produse, profit
-10. **Furnizori** - CRUD complet
-11. **Cautare CUI (ANAF)** - Cache local + OpenAPI.ro
-12. **NIR (Nota Intrare Receptie)** - Receptie marfa
-13. **TVA actualizat** - Conform Legea 141/2025 (21%)
-14. **Comenzi in Asteptare cu Rezervare Stoc** - Hold cu stoc dedus, restaurat la restore/cancel, RAMANE dedus la expirare 24h
-15. **Mod Offline Baza** - Detectare, cache produse, coada vanzari, sync automata
-16. **Shortcut-uri F-key** - F9=Numerar, F7=Card, F11=Anulare (etichete vizibile)
-17. **Afisare produse imbunatatita** - 3 linii cu tooltip, stoc per produs
-18. **Eliminare dialog bon** - Finalizare directa cu toast
-19. **Prevenire Vanzari Duplicate** - Transaction ID unic, backend idempotent
-20. **Alerte Stoc Minim** - Severitate (critical/warning), deficit, sortare, icoane, rezumat
-21. **Logare Profesionala** - [SALE], [CASH], [FISCAL], [STOCK] cu detalii complete
-22. **Dashboard Deschidere Zi** - Sold casa, status bridge, hold, alerte stoc, checklist, "INCEPE ZIUA"
-23. **Setup Electron Desktop** - Config complet pentru build aplicatie nativa Windows cu bonuri offline
-24. **Bridge v3.2 PRODUCTIE** - Eliminate butoanele de bon test, comanda manuala si endpoint /fiscal/test-command. Curatare ONLINE.TXT la pornire.
-25. **Import NIR din PDF** - Parsare facturi furnizori PDF, extragere automata produse/cantitati/preturi, potrivire cu produse existente, preview editabil inainte de salvare NIR
-26. **Import CSV Produse** - Upload CSV cu produse, preview cu Nou/Actualizare, template CSV descarcabil, suport delimitator virgula/punct-virgula, codificari multiple (UTF-8, Latin-1, CP1252)
+1. Sistem de autentificare - JWT, roluri admin/casier
+2. Gestiune produse - CRUD complet, import Excel, categorii, cod bare
+3. Pagina POS - Vanzare cu cos, cautare, categorii, discount, factura cu CUI
+4. Integrare Bridge Fiscal (Cloud Polling)
+5. Operatiuni Casa - Raport X/Z, Intrare/Iesire numerar, Deschide sertar, Istoric
+6. Bridge Service v3.2 PRODUCTIE - Fara bon test, curatare ONLINE.TXT la pornire
+7. Descarcare Bridge ZIP - Endpoint /api/bridge/download-direct
+8. Stoc & Inventar - Dashboard, export Excel
+9. Rapoarte - Vanzari pe zi/luna, top produse, profit
+10. Furnizori - CRUD complet
+11. Cautare CUI (ANAF) - Cache local + OpenAPI.ro
+12. NIR (Nota Intrare Receptie) - Receptie marfa manuala
+13. TVA actualizat - Conform Legea 141/2025 (21%)
+14. Comenzi in Asteptare cu Rezervare Stoc
+15. Mod Offline Baza - Detectare, cache produse, coada vanzari, sync automata
+16. Shortcut-uri F-key - F9=Numerar, F7=Card, F11=Anulare
+17. Prevenire Vanzari Duplicate - Transaction ID unic, backend idempotent
+18. Alerte Stoc Minim - Severitate (critical/warning), deficit, sortare
+19. Dashboard Deschidere Zi - Sold casa, status bridge, hold, alerte stoc
+20. **Import NIR din PDF** - Parsare facturi furnizori (e-Factura, PyMuPDF blocks), extragere automata produse/cantitati/preturi/UM, potrivire cu produse existente, detectare furnizor si numar factura, preview editabil
+21. **Import CSV Produse** - Upload CSV cu preview, template descarcabil, detectare automata Nou/Actualizare, suport virgula/punct-virgula, codificari multiple (UTF-8, Latin-1, CP1252)
+22. **Post-NIR Coduri de Bare** - Dupa orice NIR (manual sau PDF), dialog cu toate produsele adaugate unde se pot scana/introduce coduri de bare, Enter muta la urmatorul, salvare bulk
 
 ## Taskuri Viitoare
 
@@ -59,28 +55,7 @@ Aplicatie completa de gestiune magazin si POS (Point of Sale) pentru magazinul d
 - Terminal POS card (blocat pe documentatie ECR)
 
 ### Electron (PAUZA)
-- Build & Test Electron Desktop (.exe) - utilizatorul foloseste PWA deocamdata
-
-## Structura Fisiere Cheie
-```
-/app/backend/
-  server.py              - API principal + Fiscal Queue + Held Orders + Opening Summary + CSV/PDF Import
-  fiscal_bridge.py       - Bridge local (v3.2) cloud polling
-/app/frontend/
-  electron/main.js       - Electron main process (comunica direct cu bridge)
-  electron/preload.js    - Expune bridge API catre React
-  electron-builder.json  - Config build installer Windows
-  ELECTRON_README.md     - Documentatie Electron
-  src/pages/
-    StartDayPage.js      - Dashboard deschidere zi
-    POSPage.js           - POS cu hold, F-keys, offline, transaction ID
-    CashOperationsPage.js - Operatiuni casa
-    StockPage.js         - Stoc cu alerte, NIR manual + Import din PDF
-    ProductsPage.js      - Gestiune produse + Import/Export CSV
-    ReportsPage.js       - Rapoarte vanzari
-    SuppliersPage.js     - Furnizori CRUD
-    SettingsPage.js      - Setari
-```
+- Build & Test Electron Desktop (.exe) - pauza la cererea utilizatorului
 
 ## API Endpoints Principale
 - `POST /api/auth/login` - Autentificare
@@ -89,11 +64,9 @@ Aplicatie completa de gestiune magazin si POS (Point of Sale) pentru magazinul d
 - `GET /api/products/csv-template` - Descarca template CSV
 - `POST /api/products/import-csv` - Parseaza CSV si returneaza preview
 - `POST /api/products/import-csv/confirm` - Confirma si executa importul CSV
+- `POST /api/products/bulk-barcode` - Actualizare bulk coduri de bare
 - `POST /api/sales` - Creare vanzare (cu transaction_id, idempotent)
 - `POST /api/held-orders` - Hold cu rezervare stoc
-- `GET /api/held-orders` - Lista (auto-expira >24h, stoc ramane dedus)
-- `POST /api/held-orders/{id}/restore` - Restaurare (stoc restaurat)
-- `POST /api/held-orders/{id}/cancel` - Anulare (stoc restaurat)
 - `GET /api/stock/alerts` - Alerte cu severity si deficit
 - `POST /api/nir` - Creare NIR
 - `POST /api/nir/parse-pdf` - Parseaza PDF factura si extrage produse

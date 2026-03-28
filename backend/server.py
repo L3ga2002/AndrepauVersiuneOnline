@@ -1,6 +1,7 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, UploadFile, File
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 import csv
 import re
 import fitz  # PyMuPDF
@@ -309,38 +310,58 @@ async def get_products(
     query = {}
     if search:
         search = search.strip()
-        # Check if search is a price (number)
-        try:
-            price_val = float(search.replace(',', '.'))
+
+        # Split search into text words and numbers
+        parts = search.split()
+        text_parts = []
+        number_parts = []
+        for part in parts:
+            cleaned = part.replace(',', '.')
+            try:
+                num = float(cleaned)
+                number_parts.append(num)
+            except ValueError:
+                if len(part) >= 1:
+                    text_parts.append(part)
+
+        # Build query based on what we found
+        if text_parts and number_parts:
+            # Mixed query: "ciment 29" → name contains "ciment" AND price ~29
+            name_conditions = [{"nume": {"$regex": w, "$options": "i"}} for w in text_parts if len(w) >= 2]
+            price_val = number_parts[0]
+            price_condition = {"$or": [
+                {"pret_vanzare": {"$gte": price_val - 1, "$lte": price_val + 1}},
+                {"pret_achizitie": {"$gte": price_val - 1, "$lte": price_val + 1}},
+            ]}
+            all_conditions = name_conditions + [price_condition]
+            if all_conditions:
+                query["$and"] = all_conditions
+        elif number_parts and not text_parts:
+            # Pure number: search by price or barcode
+            price_val = number_parts[0]
             query["$or"] = [
                 {"pret_vanzare": price_val},
                 {"pret_achizitie": price_val},
-                {"pret_vanzare": {"$gte": price_val - 0.5, "$lte": price_val + 0.5}},
-                {"nume": {"$regex": search, "$options": "i"}},
-                {"cod_bare": {"$regex": search, "$options": "i"}}
+                {"pret_vanzare": {"$gte": price_val - 1, "$lte": price_val + 1}},
+                {"pret_achizitie": {"$gte": price_val - 1, "$lte": price_val + 1}},
+                {"cod_bare": {"$regex": search.strip(), "$options": "i"}}
             ]
-        except ValueError:
-            # Build fuzzy search: split into words, each word matches independently
-            words = search.split()
-            if len(words) > 1:
-                # Multi-word: each word must appear somewhere in the name
-                conditions = []
-                for word in words:
-                    if len(word) >= 2:
-                        conditions.append({"nume": {"$regex": word, "$options": "i"}})
-                if conditions:
-                    query["$and"] = conditions
-                else:
-                    query["$or"] = [
-                        {"nume": {"$regex": search, "$options": "i"}},
-                        {"cod_bare": {"$regex": search, "$options": "i"}}
-                    ]
+        elif len(text_parts) > 1:
+            # Multi-word text: each word must appear in name (any order, any position)
+            conditions = [{"nume": {"$regex": w, "$options": "i"}} for w in text_parts if len(w) >= 2]
+            if conditions:
+                query["$and"] = conditions
             else:
-                # Single word: try partial match (even last part of name)
                 query["$or"] = [
                     {"nume": {"$regex": search, "$options": "i"}},
                     {"cod_bare": {"$regex": search, "$options": "i"}}
                 ]
+        else:
+            # Single word: partial match anywhere in name
+            query["$or"] = [
+                {"nume": {"$regex": search, "$options": "i"}},
+                {"cod_bare": {"$regex": search, "$options": "i"}}
+            ]
     if categorie:
         query["categorie"] = categorie
     if low_stock:
@@ -935,6 +956,26 @@ async def bulk_update_barcodes(data: dict, user: dict = Depends(require_admin)):
     return {"updated": updated, "total": len(updates)}
 
 
+@api_router.get("/nir/test-invoices")
+async def list_test_invoices(user: dict = Depends(require_admin)):
+    """List available test invoice PDFs"""
+    invoice_dir = os.path.join(os.path.dirname(__file__), "static", "test_invoices")
+    if not os.path.exists(invoice_dir):
+        return {"invoices": []}
+    files = [f for f in os.listdir(invoice_dir) if f.endswith('.pdf')]
+    return {"invoices": files}
+
+
+@api_router.get("/nir/test-invoices/{filename}")
+async def download_test_invoice(filename: str, user: dict = Depends(require_admin)):
+    """Download a test invoice PDF"""
+    invoice_dir = os.path.join(os.path.dirname(__file__), "static", "test_invoices")
+    filepath = os.path.join(invoice_dir, filename)
+    if not os.path.exists(filepath) or not filename.endswith('.pdf'):
+        raise HTTPException(status_code=404, detail="Fișier negăsit")
+    return FileResponse(filepath, media_type="application/pdf", filename=filename)
+
+
 @api_router.post("/nir/parse-pdf")
 async def parse_nir_pdf(file: UploadFile = File(...), user: dict = Depends(require_admin)):
     """Parse a supplier invoice PDF and extract items for NIR creation"""
@@ -974,15 +1015,31 @@ async def parse_nir_pdf(file: UploadFile = File(...), user: dict = Depends(requi
 
     # Try to extract supplier name
     supplier_name = ""
-    sup_patterns = [
-        r'(?:furnizor|vanzator|emitent)\s*[:.]?\s*\n?\s*(.+?)(?:\n|CUI|cod\s*fiscal|Reg)',
-        r'S\.?C\.?\s+(.+?)\s+S\.?[RA]\.?L\.?',
-    ]
-    for pattern in sup_patterns:
-        match = re.search(pattern, all_text, re.IGNORECASE)
-        if match:
-            supplier_name = match.group(1).strip()
-            break
+    # Strategy 1: Find company names (S.R.L., S.A.) that are NOT "ANDREPAU"
+    company_matches = re.findall(r'([\w\s\.\-]+\bS\.?R\.?L\.?\b|[\w\s\.\-]+\bS\.?A\.?\b|[\w\s\.\-]+\bL\.?T\.?D\.?\b)', all_text)
+    for name in company_matches:
+        clean = name.strip()
+        if clean and 'ANDREPAU' not in clean.upper() and len(clean) > 5:
+            # Remove leading numbers, dates, etc.
+            clean = re.sub(r'^\d+[\s.]*', '', clean).strip()
+            if clean and len(clean) > 5:
+                supplier_name = clean
+                break
+    # Strategy 2: After "Furnizor:" scan lines for a company-like name
+    if not supplier_name:
+        lines = all_text.split('\n')
+        in_supplier_section = False
+        for line in lines:
+            stripped = line.strip()
+            if re.match(r'(?i)furnizor', stripped):
+                in_supplier_section = True
+                continue
+            if in_supplier_section and stripped:
+                if 'cumparator' in stripped.lower() or 'andrepau' in stripped.lower():
+                    continue
+                if len(stripped) > 3 and not stripped.startswith('CUI') and not stripped.startswith('Reg'):
+                    supplier_name = stripped
+                    break
 
     # Extract items using blocks (primary strategy for e-Factura PDFs)
     extracted_items = _extract_items_from_blocks(all_blocks)

@@ -45,6 +45,40 @@ export default function StockPage() {
   const [barcodeItems, setBarcodeItems] = useState([]);
   const [savingBarcodes, setSavingBarcodes] = useState(false);
 
+  // Test invoices
+  const [testInvoices, setTestInvoices] = useState([]);
+  const [showTestInvoices, setShowTestInvoices] = useState(false);
+
+  const fetchTestInvoices = async () => {
+    try {
+      const res = await fetch(`${API_URL}/nir/test-invoices`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTestInvoices(data.invoices || []);
+      }
+    } catch {}
+  };
+
+  const downloadTestInvoice = async (filename) => {
+    try {
+      const res = await fetch(`${API_URL}/nir/test-invoices/${filename}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success(`Descărcat: ${filename}`);
+      }
+    } catch { toast.error('Eroare la descărcare'); }
+  };
+
   const fetchDashboard = useCallback(async () => {
     try {
       const response = await fetch(`${API_URL}/stock/dashboard`, {
@@ -399,7 +433,7 @@ export default function StockPage() {
         </div>
         
         {isAdmin && (
-          <div className="flex gap-3">
+          <div className="flex gap-3 items-center">
             <input
               ref={pdfFileRef}
               type="file"
@@ -408,6 +442,31 @@ export default function StockPage() {
               onChange={handlePdfUpload}
               data-testid="pdf-file-input"
             />
+            <div className="relative">
+              <Button
+                data-testid="test-invoices-btn"
+                onClick={() => { fetchTestInvoices(); setShowTestInvoices(!showTestInvoices); }}
+                variant="ghost"
+                className="h-12 px-4 text-muted-foreground hover:text-foreground"
+              >
+                <FileText className="w-5 h-5 mr-2" />
+                Facturi Test
+              </Button>
+              {showTestInvoices && testInvoices.length > 0 && (
+                <div className="absolute right-0 top-14 z-50 bg-card border border-border rounded-sm shadow-lg p-2 min-w-[280px]">
+                  <p className="text-xs text-muted-foreground px-2 pb-2">Descarcă o factură de test:</p>
+                  {testInvoices.map(f => (
+                    <button
+                      key={f}
+                      onClick={() => { downloadTestInvoice(f); setShowTestInvoices(false); }}
+                      className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-secondary/50 rounded-sm transition-colors"
+                    >
+                      {f.replace('.pdf', '').replace(/_/g, ' ')}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <Button
               data-testid="import-pdf-btn"
               onClick={() => pdfFileRef.current?.click()}

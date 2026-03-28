@@ -227,21 +227,31 @@ export default function POSPage() {
           let cachedProducts = JSON.parse(cached);
           if (searchQuery) {
             const q = searchQuery.toLowerCase();
-            const priceNum = parseFloat(q.replace(',', '.'));
+            // Split into text and number parts
+            const parts = q.split(/\s+/);
+            const textParts = [];
+            const numParts = [];
+            parts.forEach(p => {
+              const num = parseFloat(p.replace(',', '.'));
+              if (!isNaN(num) && p.match(/^\d/)) numParts.push(num);
+              else if (p.length >= 1) textParts.push(p);
+            });
+
             cachedProducts = cachedProducts.filter(p => {
-              // Name match (partial, any word)
-              const nameMatch = p.nume.toLowerCase().includes(q);
-              // Barcode match
-              const barcodeMatch = p.cod_bare && p.cod_bare.includes(q);
-              // Price match
-              const priceMatch = !isNaN(priceNum) && (
-                Math.abs(p.pret_vanzare - priceNum) < 0.5 ||
-                Math.abs(p.pret_achizitie - priceNum) < 0.5
+              const name = p.nume.toLowerCase();
+              // Text parts: each must appear in name
+              const textMatch = textParts.length === 0 || textParts.every(w => name.includes(w));
+              // Number parts: price match
+              const priceMatch = numParts.length === 0 || numParts.some(n =>
+                Math.abs(p.pret_vanzare - n) <= 1 || Math.abs(p.pret_achizitie - n) <= 1
               );
-              // Multi-word fuzzy: each word in query found in name
-              const words = q.split(/\s+/).filter(w => w.length >= 2);
-              const fuzzyMatch = words.length > 1 && words.every(w => p.nume.toLowerCase().includes(w));
-              return nameMatch || barcodeMatch || priceMatch || fuzzyMatch;
+              // Barcode match
+              const barcodeMatch = p.cod_bare && p.cod_bare.includes(q.replace(/\s/g, ''));
+
+              if (textParts.length > 0 && numParts.length > 0) {
+                return textMatch && priceMatch;
+              }
+              return textMatch || priceMatch || barcodeMatch;
             });
           }
           if (selectedCategory) {

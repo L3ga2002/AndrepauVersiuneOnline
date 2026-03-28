@@ -14,6 +14,7 @@ export default function POSPage() {
   const [categories, setCategories] = useState([]);
   const [cart, setCart] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [priceFilter, setPriceFilter] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [discount, setDiscount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -207,6 +208,7 @@ export default function POSPage() {
     try {
       let url = `${API_URL}/products?limit=100&`;
       if (searchQuery) url += `search=${encodeURIComponent(searchQuery)}&`;
+      if (priceFilter) url += `price=${encodeURIComponent(priceFilter)}&`;
       if (selectedCategory) url += `categorie=${encodeURIComponent(selectedCategory)}&`;
       
       const response = await fetch(url, {
@@ -215,7 +217,7 @@ export default function POSPage() {
       const data = await response.json();
       setProducts(data.products || []);
       // Cache for offline use
-      if (!searchQuery && !selectedCategory) {
+      if (!searchQuery && !selectedCategory && !priceFilter) {
         localStorage.setItem('andrepau_products_cache', JSON.stringify(data.products || []));
       }
     } catch (error) {
@@ -227,32 +229,22 @@ export default function POSPage() {
           let cachedProducts = JSON.parse(cached);
           if (searchQuery) {
             const q = searchQuery.toLowerCase();
-            // Split into text and number parts
-            const parts = q.split(/\s+/);
-            const textParts = [];
-            const numParts = [];
-            parts.forEach(p => {
-              const num = parseFloat(p.replace(',', '.'));
-              if (!isNaN(num) && p.match(/^\d/)) numParts.push(num);
-              else if (p.length >= 1) textParts.push(p);
-            });
-
+            const words = q.split(/\s+/).filter(w => w.length >= 1);
             cachedProducts = cachedProducts.filter(p => {
               const name = p.nume.toLowerCase();
-              // Text parts: each must appear in name
-              const textMatch = textParts.length === 0 || textParts.every(w => name.includes(w));
-              // Number parts: price match
-              const priceMatch = numParts.length === 0 || numParts.some(n =>
-                Math.abs(p.pret_vanzare - n) <= 1 || Math.abs(p.pret_achizitie - n) <= 1
-              );
-              // Barcode match
+              const nameMatch = words.every(w => name.includes(w));
               const barcodeMatch = p.cod_bare && p.cod_bare.includes(q.replace(/\s/g, ''));
-
-              if (textParts.length > 0 && numParts.length > 0) {
-                return textMatch && priceMatch;
-              }
-              return textMatch || priceMatch || barcodeMatch;
+              return nameMatch || barcodeMatch;
             });
+          }
+          if (priceFilter) {
+            const priceNum = parseFloat(priceFilter.replace(',', '.'));
+            if (!isNaN(priceNum)) {
+              cachedProducts = cachedProducts.filter(p =>
+                Math.abs(p.pret_vanzare - priceNum) <= 2 ||
+                Math.abs(p.pret_achizitie - priceNum) <= 2
+              );
+            }
           }
           if (selectedCategory) {
             cachedProducts = cachedProducts.filter(p => p.categorie === selectedCategory);
@@ -261,7 +253,7 @@ export default function POSPage() {
         }
       }
     }
-  }, [API_URL, token, searchQuery, selectedCategory]);
+  }, [API_URL, token, searchQuery, priceFilter, selectedCategory]);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -286,7 +278,7 @@ export default function POSPage() {
 
   useEffect(() => {
     fetchProducts();
-  }, [searchQuery, selectedCategory, fetchProducts]);
+  }, [searchQuery, priceFilter, selectedCategory, fetchProducts]);
 
   // Focus search on load
   useEffect(() => {
@@ -816,18 +808,32 @@ export default function POSPage() {
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         {/* Search & Categories */}
         <div className="p-3 border-b border-border space-y-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-            <Input
-              ref={searchRef}
-              data-testid="pos-search"
-              type="text"
-              placeholder="Caută produs sau scanează cod bare..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-12 pl-10 pr-10 text-base bg-card border-border"
-            />
-            <Barcode className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <Input
+                ref={searchRef}
+                data-testid="pos-search"
+                type="text"
+                placeholder="Caută produs sau scanează cod bare..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-12 pl-10 pr-10 text-base bg-card border-border"
+              />
+              <Barcode className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+            </div>
+            <div className="relative w-36">
+              <Input
+                data-testid="pos-price-filter"
+                type="text"
+                inputMode="decimal"
+                placeholder="Preț RON"
+                value={priceFilter}
+                onChange={(e) => setPriceFilter(e.target.value)}
+                className="h-12 pl-3 pr-12 text-base bg-card border-border font-mono text-right"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">RON</span>
+            </div>
           </div>
 
           {/* Categories */}

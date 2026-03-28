@@ -301,6 +301,7 @@ async def create_product(product: ProductCreate, user: dict = Depends(require_ad
 @api_router.get("/products")
 async def get_products(
     search: Optional[str] = None,
+    price: Optional[str] = None,
     categorie: Optional[str] = None,
     low_stock: Optional[bool] = None,
     page: int = 1,
@@ -308,60 +309,37 @@ async def get_products(
     user: dict = Depends(get_current_user)
 ):
     query = {}
+    conditions = []
+
     if search:
         search = search.strip()
+        words = search.split()
+        text_words = [w for w in words if len(w) >= 1]
 
-        # Split search into text words and numbers
-        parts = search.split()
-        text_parts = []
-        number_parts = []
-        for part in parts:
-            cleaned = part.replace(',', '.')
-            try:
-                num = float(cleaned)
-                number_parts.append(num)
-            except ValueError:
-                if len(part) >= 1:
-                    text_parts.append(part)
-
-        # Build query based on what we found
-        if text_parts and number_parts:
-            # Mixed query: "ciment 29" → name contains "ciment" AND price ~29
-            name_conditions = [{"nume": {"$regex": w, "$options": "i"}} for w in text_parts if len(w) >= 2]
-            price_val = number_parts[0]
-            price_condition = {"$or": [
-                {"pret_vanzare": {"$gte": price_val - 1, "$lte": price_val + 1}},
-                {"pret_achizitie": {"$gte": price_val - 1, "$lte": price_val + 1}},
-            ]}
-            all_conditions = name_conditions + [price_condition]
-            if all_conditions:
-                query["$and"] = all_conditions
-        elif number_parts and not text_parts:
-            # Pure number: search by price or barcode
-            price_val = number_parts[0]
-            query["$or"] = [
-                {"pret_vanzare": price_val},
-                {"pret_achizitie": price_val},
-                {"pret_vanzare": {"$gte": price_val - 1, "$lte": price_val + 1}},
-                {"pret_achizitie": {"$gte": price_val - 1, "$lte": price_val + 1}},
-                {"cod_bare": {"$regex": search.strip(), "$options": "i"}}
-            ]
-        elif len(text_parts) > 1:
-            # Multi-word text: each word must appear in name (any order, any position)
-            conditions = [{"nume": {"$regex": w, "$options": "i"}} for w in text_parts if len(w) >= 2]
-            if conditions:
-                query["$and"] = conditions
-            else:
-                query["$or"] = [
-                    {"nume": {"$regex": search, "$options": "i"}},
-                    {"cod_bare": {"$regex": search, "$options": "i"}}
-                ]
-        else:
-            # Single word: partial match anywhere in name
-            query["$or"] = [
+        if len(text_words) > 1:
+            # Multi-word: each word must appear in name
+            for w in text_words:
+                if len(w) >= 2:
+                    conditions.append({"nume": {"$regex": w, "$options": "i"}})
+        elif text_words:
+            # Single word: name or barcode match
+            conditions.append({"$or": [
                 {"nume": {"$regex": search, "$options": "i"}},
                 {"cod_bare": {"$regex": search, "$options": "i"}}
-            ]
+            ]})
+
+    if price:
+        try:
+            price_val = float(price.strip().replace(',', '.'))
+            conditions.append({"$or": [
+                {"pret_vanzare": {"$gte": price_val - 2, "$lte": price_val + 2}},
+                {"pret_achizitie": {"$gte": price_val - 2, "$lte": price_val + 2}},
+            ]})
+        except ValueError:
+            pass
+
+    if conditions:
+        query["$and"] = conditions
     if categorie:
         query["categorie"] = categorie
     if low_stock:

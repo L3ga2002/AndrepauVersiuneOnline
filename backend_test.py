@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 # Use the public endpoint from frontend .env
-API_BASE_URL = "https://andrepau-pos-1.preview.emergentagent.com/api"
+API_BASE_URL = "https://store-checkout-32.preview.emergentagent.com/api"
 
 class ANDREPAUAPITester:
     def __init__(self):

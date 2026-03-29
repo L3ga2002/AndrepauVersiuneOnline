@@ -15,7 +15,7 @@ import requests
 import os
 import io
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://andrepau-preview.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://andrepau-stock.preview.emergentagent.com')
 
 # Test credentials
 ADMIN_CREDS = {"username": "admin", "password": "admin123"}

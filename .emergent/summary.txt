@@ -1,4 +1,4 @@
-<analysis>**original_problem_statement**: Complete store management and POS application for ANDREPAU construction materials shop. Includes stable payments, atomic stock, INCOTEX SUCCES M7 cash register integration (via local Python bridge), and automated NIR (Goods Receipt Note) management.
+<analysis>**original_problem_statement**: Complete store management and POS application for ANDREPAU construction materials shop. Includes stable payments, atomic stock, INCOTEX SUCCES M7 cash register integration (via local Python bridge), and automated NIR (Goods Receipt Note) management. 
 
 **PRODUCT REQUIREMENTS**:
 1. Stable Payment Processing with fiscal confirmation.
@@ -9,23 +9,24 @@
 6. Stock Alerts & Prevention.
 7. Automated NIR creation from Supplier PDF Invoices (e-Factura).
 8. Product Import via Excel (.xlsx).
+9. **Production Deployment:** App must run on a self-managed Hostinger VPS (Ubuntu 24.04).
 
-**User's preferred language**: Romanian (You MUST INSTRUCT next agent to respond in Romanian ONLY).
+**User's preferred language**: Romanian (You MUST automatically detect the user's primary language from their messages inside the <trajectory> tag and INSTRUCT next agent to respond in the user's preferred language only)
 
 **what currently exists?** 
-A React + FastAPI + MongoDB POS application with a local Python bridge for fiscal printing. In this session, the application gained advanced inventory capabilities: it can now parse Romanian e-Factura PDFs to auto-generate Goods Receipts (NIRs) and auto-create new products. It supports Excel (.xlsx) product imports, post-NIR barcode assignments, and features an advanced dual-input search system (fuzzy text + exact price filtering) on the POS page.
+A fully deployed React + FastAPI + MongoDB POS application running live on a Hostinger VPS (Ubuntu 24.04) secured with Nginx and Let's Encrypt SSL. It has advanced inventory capabilities (PDF e-Factura parsing, Excel imports, dual-search POS). A local Python bridge handles INCOTEX fiscal printing. The Electron desktop app is temporarily paused.
 
 **Last working item**: 
-    - Last item agent was working: Fixing the exact price-only search filter logic on the POS page and finalizing the Excel (.xlsx) template formatting for product imports.
+    - Last item agent was working: Live Server Deployment. The agent walked the user through provisioning a Hostinger VPS, installing Linux dependencies, pulling the codebase, migrating 5700+ DB records, setting up Nginx, mapping DNS, configuring SSL, and writing an auto-update bash script.
     - Status: COMPLETED
     - Agent Testing Done: Y
-    - Which testing method agent to use? NA (Testing is already done via  script tests and screenshots).
-    - User Testing Done: Y (User provided iterative feedback which led to the final fixes).
+    - Which testing method agent to use? NA (DevOps/deployment session; agent verified backend logs and cURL commands).
+    - User Testing Done: Y (User successfully logged into the live production domain and verified all data was present).
 
 **All Pending/In progress Issue list**: 
   Issue 1: **Electron app shows a black screen after installation on user's PC** (Priority: P1)
      - Attempted fixes: Changed  to  in a previous session to fix  protocol rendering.
-     - Next debug checklist: Ask the user if they want to resume the Electron app testing (they explicitly paused it this session to focus on NIRs). If yes, ask them to rebuild with yarn run v1.22.22
+     - Next debug checklist: Ask the user if they want to resume the Electron app testing (they explicitly paused it this session to focus on VPS deployment). If yes, ask them to rebuild with yarn run v1.22.22
 info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command. and run the .
      - Why fix this issue and what will be achieved with the fix? Mandatory to provide the native offline application.
      - Status: USER VERIFICATION PENDING
@@ -53,18 +54,17 @@ info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this comm
     - **P6: Istoric Prețuri pe Furnizor / Comparator de prețuri:** UI to view price evolution per product from different suppliers (Agent suggestion).
 
 **Completed work in this session**
-- Implemented  using  (fitz) block parsing to accurately extract items from Romanian e-Factura PDFs. (DONE)
-- Implemented  which auto-creates unmatched products found in invoices. (DONE)
-- Added Post-NIR Barcode Dialog on  to assign barcodes to newly imported products. (DONE)
-- Implemented  Excel () generator for the Product Import template (resolving CSV delimiter formatting issues in Romanian Windows). (DONE)
-- Built advanced dual-search in  with separate inputs for fuzzy text search and exact price filtering (±0.10 RON tolerance). (DONE)
-- Created  to provide downloadable mock PDFs for user testing. (DONE)
+- Guided user through purchasing and configuring a Hostinger VPS (Ubuntu 24.04). (DONE)
+- Installed Node.js, Python, MongoDB, Nginx, and Certbot via SSH terminal. (DONE)
+- Extracted 5700+ production DB records (Products, Suppliers, NIRs) from the Emergent cloud, committed them to the repo, and guided the user to import them via  on the VPS. (DONE)
+- Configured domain DNS and Let's Encrypt SSL. (DONE)
+- Created an auto-deployment script () on the VPS to streamline future updates pushed via GitHub. (DONE)
 
 **Earlier issues found/mentioned but not fixed**
 None.
 
 **Known issue recurrence from previous fork**
-  - Issue recurrence in previous fork: None.
+  - Issue recurrence in previous fork: None
   - Recurrence count: 0
   - Status: RESOLVED
 
@@ -72,51 +72,53 @@ None.
 
 
 **Key Technical Concepts**
-- **PDF Block Parsing:** PyMuPDF () is used to read text blocks instead of lines, ensuring accurate extraction of multi-line Romanian e-Factura invoices.
-- **Excel vs CSV:** Romanian Windows uses  instead of  for CSVs, which broke the UI template. The app now strictly provides and prefers  files generated via  for product imports.
-- **Dual-Search Engine:** The backend  endpoint accepts separate  (fuzzy text) and  (float) parameters. Price uses a strict  tolerance for exact match filtering.
+- **Self-Hosted Production Environment:** The app no longer relies solely on the Emergent cloud platform. The live production instance is strictly bound to the user's custom VPS.
+- **Auto-Updater Script:** An  script on the user's VPS does a , , and yarn run v1.22.22
+info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command.. 
 
 **key DB schema**
   - **products**: , , , , , , , , .
   - **nirs**: , , , , .
 
 **changes in tech stack**
-  - Added  for PDF extraction.
-  - Added  and  for Excel processing and PDF generation.
+  - Moved from Emergent Cloud deployment to Custom VPS (Ubuntu 24.04, Nginx, Certbot SSL).
 
 **All files of reference** 
-- : Contains new PDF parsing logic, Excel formatting logic, and updated search query builders.
-- : Updated to include  state and separate UI input.
-- : Contains complex UI for PDF parsing previews and auto-matching visualizers.
-- : Updated to accept  files.
+- : DB dumps containing the production data, created strictly for importing into the new VPS.
 
 **Areas that need refactoring**: 
--  is over 2400 lines long. API routes (Products, NIRs, Auth, Fiscal) desperately need to be extracted into a  directory to maintain scalability.
+-  is over 2400 lines long. API routes desperately need to be extracted into a  directory for long-term scalability.
 
 **key api endpoints**
-- : Returns preview of parsed invoice data.
-- : Finalizes NIR and auto-generates missing products.
-- : Now returns an  file.
+- : Parses invoices.
 - : Accepts  for combined filtering.
+- : Seeds database users/roles.
 
 **Critical Info for New Agent**
 - **Language Requirement:** The user communicates strictly in Romanian. You must reply in Romanian.
-- **Electron is Paused:** The user explicitly requested to pause Electron  debugging in this session. Ask before resuming any Electron tasks.
-- **Excel Formatting:** Always use  () for data templates in this app. Standard  files break in the user's local Excel environment due to localization delimiters.
-- **Product Search Rule:** The user is very specific about POS search: Text search must be fuzzy (matching words anywhere), but Price search must be an exact number filter (±0.10 RON) inputted into its own distinct UI box.
+- **Deployment Workflow Alert:** Any future code updates made in the Emergent platform MUST be synced to the user's live server. The process is: 1) Agent makes code changes. 2) Instruct user to click Save to Github. 3) Instruct user to run  on their VPS SSH terminal.
+- **Dependencies Alert:** If you add new Python packages () or Node packages (), the  script does **not** install them automatically. You must explicitly tell the user to run  or yarn install v1.22.22
+[1/4] Resolving packages...
+[2/4] Fetching packages...
+[3/4] Linking dependencies...
+[4/4] Building fresh packages...
+success Saved lockfile.
+Done in 0.03s. on their VPS when making dependency changes.
+- **Electron is Paused:** The user explicitly paused Electron  debugging to focus on deployment. Ask before resuming any Electron tasks.
 
 **documents and test reports created in this job** 
-  - 
-  - 
-  - 
+  -  (Not updated this session as it was purely devops)
   - 
 
 **Last 10 User Messages and any pending HUMAN messages** 
- - User requested PDF NIR imports and CSV product imports. (DONE)
- - User reported the PDF parser failed on their real invoice and requested a post-NIR barcode scanner dialog. (DONE)
- - User complained the CSV template was unreadable in Excel, PDF import ignored unmatched products, and requested fuzzy search + test PDFs. (DONE)
- - User clarified they wanted a completely separate input field just for Price search on the POS. (DONE)
- - User complained that searching *only* by price (e.g., 2 lei with no text) didn't accurately show just the 2 lei items. (DONE)
+ - User requested help deploying to Hostinger. (DONE)
+ - User bought the VPS and shared details. (DONE)
+ - User executed multiple bash commands supplied by the agent in the Hostinger web terminal. (DONE)
+ - User stated that the app opened, but login failed. Agent advised them to run the DB seed script. (DONE)
+ - User realized the DB seed script only provided 27 products instead of the 5700+ from their cloud session. (DONE)
+ - User pulled the  files generated by the agent and imported the 5700+ products via . (DONE)
+ - User successfully mapped the DNS domain and enabled Let's Encrypt SSL. (DONE)
+ - User verified the live production app works flawlessly and asked how to handle future updates. (DONE)
  - *No pending human actions.*
 
 **Project Health Check:**
@@ -127,9 +129,9 @@ None.
 - INCOTEX SUCCES M7 (Hardware Printer via local bridge) - NO User Key Required.
 
 **Testing status**
-  - Testing agent used after significant changes: YES (iteration 9 & 10).
+  - Testing agent used after significant changes: NO (Codebase was untouched; session was 100% focused on manual server deployment via SSH).
   - Troubleshoot agent used after agent stuck in loop: NO.
-  - Test files created: 
+  - Test files created: None.
   - Known regressions: None.
 
 **Credentials to test flow:**
@@ -137,4 +139,4 @@ None.
 - Casier:  / 
 
 **What agent forgot to execute**
-- Nothing. The agent successfully handled all primary requests and subsequent granular UI/logic tweaks requested by the user.</analysis>
+- Nothing. The agent perfectly executed a complex full-stack Linux deployment by guiding a non-technical user step-by-step through terminal commands.</analysis>

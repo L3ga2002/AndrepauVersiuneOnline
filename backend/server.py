@@ -2196,100 +2196,81 @@ async def search_anaf_cui(data: dict, user: dict = Depends(get_current_user)):
         except Exception as e:
             logger.warning(f"OpenAPI.ro error: {str(e)}")
     
-    # Try ANAF API - multiple attempts with different configurations
+    # Try ANAF API v9 (new endpoint - works from datacenter IPs)
     if not company_data:
-        anaf_urls = [
-            "https://webservicesp.anaf.ro/PlatitorTvaRest/api/v8/ws/tva",
-            "https://webservicesp.anaf.ro/PlatitorTvaRest/api/v7/ws/tva",
-        ]
+        anaf_url = "https://webservicesp.anaf.ro/api/PlatitorTvaRest/v9/tva"
         payload = [{"cui": cui_int, "data": today}]
         
-        for anaf_url in anaf_urls:
-            if company_data:
-                break
-            try:
-                async with httpx.AsyncClient(
-                    timeout=20.0,
-                    follow_redirects=True,
-                    verify=True
-                ) as client:
-                    response = await client.post(
-                        anaf_url,
-                        json=payload,
-                        headers={
-                            "Content-Type": "application/json",
-                            "Accept": "application/json",
-                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        try:
+            async with httpx.AsyncClient(
+                timeout=20.0,
+                follow_redirects=True,
+                verify=True
+            ) as client:
+                response = await client.post(
+                    anaf_url,
+                    json=payload,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                    }
+                )
+                
+                logger.info(f"ANAF v9 response status: {response.status_code}")
+                
+                if response.status_code in (200, 404) and response.headers.get("content-type", "").startswith("application"):
+                    result = response.json()
+                    
+                    if result.get("found") and len(result["found"]) > 0:
+                        company = result["found"][0]
+                        date_generale = company.get("date_generale", {})
+                        adresa_sediu = company.get("adresa_sediu_social", {})
+                        inregistrare_tva = company.get("inregistrare_scop_Tva", {})
+                        
+                        # Build full address
+                        address_parts = []
+                        if adresa_sediu.get("sdenumire_Strada"):
+                            street = adresa_sediu.get("sdenumire_Strada", "")
+                            nr = adresa_sediu.get("snumar_Strada", "")
+                            if nr:
+                                address_parts.append(f"{street} {nr}")
+                            else:
+                                address_parts.append(street)
+                        if adresa_sediu.get("sdenumire_Localitate"):
+                            address_parts.append(adresa_sediu.get("sdenumire_Localitate"))
+                        if adresa_sediu.get("sdenumire_Judet"):
+                            address_parts.append(f"Jud. {adresa_sediu.get('sdenumire_Judet')}")
+                        
+                        full_address = ", ".join(address_parts) if address_parts else date_generale.get("adresa", "")
+                        
+                        company_data = {
+                            "cui": cui_clean,
+                            "denumire": date_generale.get("denumire", ""),
+                            "adresa": full_address,
+                            "nr_reg_com": date_generale.get("nrRegCom", ""),
+                            "telefon": date_generale.get("telefon", ""),
+                            "cod_postal": adresa_sediu.get("scod_Postal", "") or date_generale.get("codPostal", ""),
+                            "platitor_tva": inregistrare_tva.get("scpTVA", False),
+                            "stare": date_generale.get("stare_inregistrare", ""),
+                            "localitate": adresa_sediu.get("sdenumire_Localitate", ""),
+                            "judet": adresa_sediu.get("sdenumire_Judet", ""),
+                            "source": "anaf"
                         }
-                    )
-                    
-                    logger.info(f"ANAF response status: {response.status_code}, url: {anaf_url}")
-                    logger.info(f"ANAF response content-type: {response.headers.get('content-type', 'unknown')}")
-                    
-                    # Check for HTML redirect (ANAF blocks some requests)
-                    if "<!DOCTYPE" in response.text or "<html" in response.text.lower():
-                        logger.warning(f"ANAF returned HTML redirect from {anaf_url} - service may be blocking this IP")
-                        anaf_error_detail = "ANAF a returnat o pagină HTML în loc de date. Serverul poate fi blocat temporar de ANAF."
-                        continue
-                    
-                    if response.status_code == 200:
-                        result = response.json()
-                        logger.info(f"ANAF JSON response: {json.dumps(result)[:500]}")
-                        
-                        if result.get("found") and len(result["found"]) > 0:
-                            company = result["found"][0]
-                            date_generale = company.get("date_generale", {})
-                            adresa_sediu = company.get("adresa_sediu_social", {})
-                            inregistrare_tva = company.get("inregistrare_scop_Tva", {})
-                            
-                            # Build full address
-                            address_parts = []
-                            if adresa_sediu.get("sdenumire_Strada"):
-                                street = adresa_sediu.get("sdenumire_Strada", "")
-                                nr = adresa_sediu.get("snumar_Strada", "")
-                                if nr:
-                                    address_parts.append(f"{street} {nr}")
-                                else:
-                                    address_parts.append(street)
-                            if adresa_sediu.get("sdenumire_Localitate"):
-                                address_parts.append(adresa_sediu.get("sdenumire_Localitate"))
-                            if adresa_sediu.get("sdenumire_Judet"):
-                                address_parts.append(f"Jud. {adresa_sediu.get('sdenumire_Judet')}")
-                            
-                            full_address = ", ".join(address_parts) if address_parts else date_generale.get("adresa", "")
-                            
-                            company_data = {
-                                "cui": cui_clean,
-                                "denumire": date_generale.get("denumire", ""),
-                                "adresa": full_address,
-                                "nr_reg_com": date_generale.get("nrRegCom", ""),
-                                "telefon": date_generale.get("telefon", ""),
-                                "cod_postal": adresa_sediu.get("scod_Postal", "") or date_generale.get("codPostal", ""),
-                                "platitor_tva": inregistrare_tva.get("scpTVA", False),
-                                "stare": date_generale.get("stare_inregistrare", ""),
-                                "localitate": adresa_sediu.get("sdenumire_Localitate", ""),
-                                "judet": adresa_sediu.get("sdenumire_Judet", ""),
-                                "source": "anaf"
-                            }
-                        elif result.get("notfound") and len(result["notfound"]) > 0:
-                            anaf_error_detail = f"CUI {cui_clean} nu a fost găsit în baza de date ANAF."
-                        else:
-                            anaf_error_detail = f"ANAF a răspuns dar fără date pentru CUI {cui_clean}."
+                    elif result.get("notFound"):
+                        anaf_error_detail = f"CUI {cui_clean} nu a fost găsit în baza de date ANAF."
                     else:
-                        anaf_error_detail = f"ANAF a răspuns cu status {response.status_code}."
-                        logger.warning(f"ANAF status {response.status_code}: {response.text[:300]}")
-                        
-            except httpx.TimeoutException:
-                logger.warning(f"ANAF timeout on {anaf_url}")
-                anaf_error_detail = "ANAF nu a răspuns în timp util (timeout 20s). Încercați din nou."
-            except httpx.RequestError as e:
-                err_msg = str(e).strip()
-                logger.warning(f"ANAF request error on {anaf_url}: {err_msg or type(e).__name__}")
-                anaf_error_detail = "ANAF blochează conexiunile de pe acest server. Porniți bridge-ul local pentru căutare CUI."
-            except Exception as e:
-                err_msg = str(e).strip()
-                logger.warning(f"ANAF unexpected error on {anaf_url}: {err_msg or type(e).__name__}")
-                anaf_error_detail = "ANAF blochează conexiunile de pe acest server. Porniți bridge-ul local pentru căutare CUI."
+                        anaf_error_detail = f"ANAF a răspuns dar fără date pentru CUI {cui_clean}."
+                elif "<!DOCTYPE" in response.text or "<html" in response.text.lower():
+                    anaf_error_detail = "ANAF a returnat o pagină HTML. Serviciul poate fi indisponibil temporar."
+                else:
+                    anaf_error_detail = f"ANAF a răspuns cu status {response.status_code}."
+                    
+        except httpx.TimeoutException:
+            anaf_error_detail = "ANAF nu a răspuns în timp util (timeout 20s). Încercați din nou."
+        except Exception as e:
+            err_msg = str(e).strip()
+            logger.warning(f"ANAF v9 error: {err_msg or type(e).__name__}")
+            anaf_error_detail = "ANAF nu este disponibil momentan. Încercați din nou."
     
     if company_data:
         # Save to database cache

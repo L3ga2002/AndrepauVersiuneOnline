@@ -734,7 +734,7 @@ def anaf_search_cui():
         from datetime import date as date_type
         today = date_type.today().strftime('%Y-%m-%d')
         
-        anaf_url = 'https://webservicesp.anaf.ro/PlatitorTvaRest/api/v8/ws/tva'
+        anaf_url = 'https://webservicesp.anaf.ro/api/PlatitorTvaRest/v9/tva'
         payload = json.dumps([{'cui': cui_int, 'data': today}]).encode('utf-8')
         
         req = urllib.request.Request(anaf_url, data=payload, headers={

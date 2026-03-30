@@ -53,6 +53,14 @@ export default function POSPage() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
   const searchRef = useRef(null);
+  const cartRef = useRef(cart);
+  const fiscalLoadingRef = useRef(fiscalLoading);
+  const handlePaymentRef = useRef(null);
+  const clearCartRef = useRef(null);
+
+  // Keep refs in sync
+  useEffect(() => { cartRef.current = cart; }, [cart]);
+  useEffect(() => { fiscalLoadingRef.current = fiscalLoading; }, [fiscalLoading]);
 
   // Check bridge connection via cloud
   const checkBridge = useCallback(async () => {
@@ -300,17 +308,17 @@ export default function POSPage() {
       // Keyboard shortcuts: F7=Card, F9=Numerar, F11=Anulare
       if (e.key === 'F9') {
         e.preventDefault();
-        if (cart.length > 0 && !fiscalLoading) handlePayment('numerar');
+        if (cartRef.current.length > 0 && !fiscalLoadingRef.current && handlePaymentRef.current) handlePaymentRef.current('numerar');
         return;
       }
       if (e.key === 'F7') {
         e.preventDefault();
-        if (cart.length > 0 && !fiscalLoading) handlePayment('card');
+        if (cartRef.current.length > 0 && !fiscalLoadingRef.current && handlePaymentRef.current) handlePaymentRef.current('card');
         return;
       }
       if (e.key === 'F11') {
         e.preventDefault();
-        clearCart();
+        if (clearCartRef.current) clearCartRef.current();
         toast.info('Coș golit');
         return;
       }
@@ -413,6 +421,7 @@ export default function POSPage() {
     setCart([]);
     setDiscount(0);
   };
+  clearCartRef.current = clearCart;
 
   // Hold current order - saves to backend and reserves stock
   const holdOrder = async () => {
@@ -536,6 +545,7 @@ export default function POSPage() {
 
     await processSaleWithFiscal(method, sumaCash, sumaCard, sumaTichete);
   };
+  handlePaymentRef.current = handlePayment;
 
   const processSaleWithFiscal = async (method, sumaCash, sumaCard, sumaTichete, skipFiscal = false) => {
     setFiscalLoading(true);

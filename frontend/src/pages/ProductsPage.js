@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { formatCurrency, formatNumber, getStockStatus } from '../lib/utils';
-import { Plus, Search, Edit, Trash2, Package, AlertTriangle, Barcode, ScanLine, Upload, Download, FileText, Check, X, Loader2 } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Package, AlertTriangle, Barcode, ScanLine, Upload, Download, FileText, Check, X, Loader2, Percent } from 'lucide-react';
 import { toast } from 'sonner';
 
 const UNITS = [
@@ -77,6 +77,14 @@ export default function ProductsPage() {
   const [csvItems, setCsvItems] = useState([]);
   const [csvImporting, setCsvImporting] = useState(false);
   const csvFileRef = useRef(null);
+
+  // Delete all & TVA bulk
+  const [showDeleteAll, setShowDeleteAll] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletingAll, setDeletingAll] = useState(false);
+  const [showTvaBulk, setShowTvaBulk] = useState(false);
+  const [newTva, setNewTva] = useState('');
+  const [updatingTva, setUpdatingTva] = useState(false);
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -425,6 +433,59 @@ export default function ProductsPage() {
     }
   };
 
+  const handleDeleteAll = async () => {
+    if (deleteConfirmText !== 'STERGE TOATE') return;
+    setDeletingAll(true);
+    try {
+      const response = await fetch(`${API_URL}/products-all/delete`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(data.message);
+        setShowDeleteAll(false);
+        setDeleteConfirmText('');
+        fetchProducts();
+      } else {
+        toast.error('Eroare la ștergere');
+      }
+    } catch {
+      toast.error('Eroare la ștergere');
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
+  const handleBulkTva = async () => {
+    const tvaVal = parseFloat(newTva);
+    if (isNaN(tvaVal) || tvaVal < 0 || tvaVal > 100) {
+      toast.error('Introduceți o cotă TVA validă (0-100)');
+      return;
+    }
+    setUpdatingTva(true);
+    try {
+      const response = await fetch(`${API_URL}/products-all/bulk-tva`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ tva: tvaVal })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(data.message);
+        setShowTvaBulk(false);
+        setNewTva('');
+        fetchProducts();
+      } else {
+        toast.error('Eroare la actualizare TVA');
+      }
+    } catch {
+      toast.error('Eroare la actualizare TVA');
+    } finally {
+      setUpdatingTva(false);
+    }
+  };
+
   return (
     <div className="p-6 space-y-6" data-testid="products-page">
       {/* Header */}
@@ -439,7 +500,7 @@ export default function ProductsPage() {
         </div>
         
         {isAdmin && (
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             <input
               ref={csvFileRef}
               type="file"
@@ -465,6 +526,24 @@ export default function ProductsPage() {
             >
               <Upload className="w-5 h-5 mr-2" />
               Import Excel/CSV
+            </Button>
+            <Button
+              data-testid="bulk-tva-btn"
+              onClick={() => setShowTvaBulk(true)}
+              variant="outline"
+              className="h-12 px-4 border-border text-foreground"
+            >
+              <Percent className="w-5 h-5 mr-2" />
+              Schimbă TVA
+            </Button>
+            <Button
+              data-testid="delete-all-btn"
+              onClick={() => setShowDeleteAll(true)}
+              variant="outline"
+              className="h-12 px-4 border-red-500/50 text-red-500 hover:bg-red-500/10"
+            >
+              <Trash2 className="w-5 h-5 mr-2" />
+              Șterge Toate
             </Button>
             <Button
               data-testid="add-product-btn"
@@ -1072,6 +1151,114 @@ export default function ProductsPage() {
                 )}
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete All Products Dialog */}
+      <Dialog open={showDeleteAll} onOpenChange={setShowDeleteAll}>
+        <DialogContent className="bg-card border-border max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-foreground flex items-center gap-2">
+              <AlertTriangle className="w-6 h-6 text-red-500" />
+              Șterge TOATE Produsele
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-sm">
+              <p className="text-sm text-red-400 font-medium">ATENȚIE! Această acțiune este ireversibilă!</p>
+              <p className="text-sm text-red-400/70 mt-1">Toate cele {totalProducts} produse vor fi șterse definitiv din baza de date.</p>
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Pentru confirmare, scrieți <span className="font-mono font-bold text-foreground">STERGE TOATE</span> mai jos:
+              </p>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="STERGE TOATE"
+                className="w-full h-12 px-4 rounded-md border border-border bg-background text-foreground font-mono text-center tracking-widest"
+                data-testid="delete-all-confirm-input"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setShowDeleteAll(false); setDeleteConfirmText(''); }} className="h-12 border-border">
+              Anulează
+            </Button>
+            <Button
+              onClick={handleDeleteAll}
+              disabled={deleteConfirmText !== 'STERGE TOATE' || deletingAll}
+              className="h-12 bg-red-600 hover:bg-red-700 text-white"
+              data-testid="delete-all-confirm-btn"
+            >
+              {deletingAll ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Se șterg...</> : 'Confirmă Ștergerea'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk TVA Dialog */}
+      <Dialog open={showTvaBulk} onOpenChange={setShowTvaBulk}>
+        <DialogContent className="bg-card border-border max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-foreground flex items-center gap-2">
+              <Percent className="w-6 h-6 text-primary" />
+              Schimbă Cota TVA la Toate Produsele
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Cota TVA nouă va fi aplicată la <span className="font-bold text-foreground">{totalProducts}</span> produse.
+            </p>
+            <div className="space-y-2">
+              <label className="text-sm text-muted-foreground">Noua cotă TVA (%)</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={newTva}
+                  onChange={(e) => setNewTva(e.target.value)}
+                  placeholder="Ex: 19, 25..."
+                  className="flex-1 h-12 px-4 rounded-md border border-border bg-background text-foreground text-lg font-mono text-center"
+                  data-testid="bulk-tva-input"
+                  autoFocus
+                />
+                <span className="text-2xl font-bold text-muted-foreground">%</span>
+              </div>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {[9, 19, 21, 25].map(val => (
+                <button
+                  key={val}
+                  onClick={() => setNewTva(String(val))}
+                  className={`px-4 py-2 rounded-md border text-sm font-medium transition-colors ${
+                    newTva === String(val) 
+                      ? 'border-primary bg-primary/10 text-primary' 
+                      : 'border-border text-muted-foreground hover:text-foreground'
+                  }`}
+                  data-testid={`tva-preset-${val}`}
+                >
+                  {val}%
+                </button>
+              ))}
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setShowTvaBulk(false); setNewTva(''); }} className="h-12 border-border">
+              Anulează
+            </Button>
+            <Button
+              onClick={handleBulkTva}
+              disabled={!newTva || updatingTva}
+              className="h-12 bg-primary text-primary-foreground"
+              data-testid="bulk-tva-confirm-btn"
+            >
+              {updatingTva ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Se actualizează...</> : `Schimbă la ${newTva || '?'}%`}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -116,21 +116,6 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <div className="mt-8 pt-6 border-t border-border">
-            <p className="text-center text-sm text-muted-foreground">
-              Conturi demo:
-            </p>
-            <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
-              <div className="p-3 bg-secondary/50 rounded-sm">
-                <p className="font-medium text-foreground">Admin</p>
-                <p className="text-muted-foreground mt-1">admin / admin123</p>
-              </div>
-              <div className="p-3 bg-secondary/50 rounded-sm">
-                <p className="font-medium text-foreground">Casier</p>
-                <p className="text-muted-foreground mt-1">casier / casier123</p>
-              </div>
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>

@@ -457,8 +457,8 @@ async def import_products_file(file: UploadFile = File(...), user: dict = Depend
         raise HTTPException(status_code=400, detail="Fișierul este prea mare (max 10MB)")
 
     rows = []
-    if fname.endswith('.xlsx') or fname.endswith('.xls'):
-        # Parse Excel
+    if fname.endswith('.xlsx'):
+        # Parse modern Excel format
         from openpyxl import load_workbook
         try:
             wb = load_workbook(filename=io.BytesIO(content), read_only=True, data_only=True)
@@ -470,6 +470,18 @@ async def import_products_file(file: UploadFile = File(...), user: dict = Depend
             wb.close()
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Eroare la citire Excel: {str(e)}")
+    elif fname.endswith('.xls'):
+        # Parse old Excel format (.xls) using xlrd
+        import xlrd
+        try:
+            wb = xlrd.open_workbook(file_contents=content)
+            ws = wb.sheet_by_index(0)
+            for r in range(ws.nrows):
+                str_row = [str(ws.cell_value(r, c)).strip() if ws.cell_value(r, c) != '' else '' for c in range(ws.ncols)]
+                if any(c for c in str_row):
+                    rows.append(str_row)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Eroare la citire Excel .xls: {str(e)}")
     else:
         # Parse CSV
         text = None
@@ -504,11 +516,11 @@ async def import_products_file(file: UploadFile = File(...), user: dict = Depend
     name_variants = {"denumire", "nume", "produs", "name", "denumire produs"}
     cat_variants = {"categorie", "category", "cat"}
     barcode_variants = {"cod bare", "cod_bare", "barcode", "ean", "cod"}
-    buy_variants = {"pret achizitie", "pret_achizitie", "pret cumparare", "achizitie", "pret achizitie (ron)"}
-    sell_variants = {"pret vanzare", "pret_vanzare", "vanzare", "pret", "pret vanzare (ron)"}
-    tva_variants = {"tva", "tva %", "tva%", "cota tva"}
+    buy_variants = {"pret achizitie", "pret_achizitie", "pret cumparare", "achizitie", "pret achizitie (ron)", "pretachizitie"}
+    sell_variants = {"pret vanzare", "pret_vanzare", "vanzare", "pret", "pret vanzare (ron)", "pretvanzare"}
+    tva_variants = {"tva", "tva %", "tva%", "cota tva", "cotatva", "cota_tva"}
     unit_variants = {"unitate", "um", "unit", "unitate masura"}
-    stock_variants = {"stoc", "stock", "cantitate", "stoc disponibil"}
+    stock_variants = {"stoc", "stock", "cantitate", "stoc disponibil", "stocinitial", "stoc initial", "stoc_initial"}
     min_stock_variants = {"stoc minim", "stoc_minim", "min stock", "stoc min", "stoc minim alerta"}
 
     for idx, h in enumerate(header):
@@ -563,6 +575,9 @@ async def import_products_file(file: UploadFile = File(...), user: dict = Depend
             buy_price = _parse_number(row[col_map["pret_achizitie"]].strip()) if col_map.get("pret_achizitie") is not None and col_map["pret_achizitie"] < len(row) else 0
             tva = _parse_number(row[col_map["tva"]].strip()) if col_map.get("tva") is not None and col_map["tva"] < len(row) else 19
             unit = row[col_map["unitate"]].strip() if col_map.get("unitate") is not None and col_map["unitate"] < len(row) else "buc"
+            # Normalize unit values from old systems
+            unit_normalize = {"m": "metru", "l": "litru", "metri": "metru", "litri": "litru", "bucati": "buc", "saci": "sac", "role": "rola"}
+            unit = unit_normalize.get(unit.lower(), unit.lower()) if unit else "buc"
             stock = _parse_number(row[col_map["stoc"]].strip()) if col_map.get("stoc") is not None and col_map["stoc"] < len(row) else 0
             min_stock = _parse_number(row[col_map["stoc_minim"]].strip()) if col_map.get("stoc_minim") is not None and col_map["stoc_minim"] < len(row) else 5
 
@@ -696,6 +711,34 @@ async def delete_product(product_id: str, user: dict = Depends(require_admin)):
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Produs negăsit")
     return {"message": "Produs șters"}
+
+@api_router.delete("/products-all/delete")
+async def delete_all_products(user: dict = Depends(require_admin)):
+    """Șterge TOATE produsele din baza de date. Necesită confirmare."""
+    result = await db.products.delete_many({})
+    logger.warning(f"ALL PRODUCTS DELETED by {user['username']} - {result.deleted_count} products removed")
+    return {"message": f"{result.deleted_count} produse șterse", "deleted_count": result.deleted_count}
+
+@api_router.put("/products-all/bulk-tva")
+async def bulk_update_tva(data: dict, user: dict = Depends(require_admin)):
+    """Schimbă cota TVA la TOATE produsele"""
+    new_tva = data.get("tva")
+    if new_tva is None or not isinstance(new_tva, (int, float)) or new_tva < 0 or new_tva > 100:
+        raise HTTPException(status_code=400, detail="Cota TVA trebuie să fie între 0 și 100")
+    result = await db.products.update_many({}, {"$set": {"tva": float(new_tva)}})
+    logger.info(f"TVA updated to {new_tva}% for {result.modified_count} products by {user['username']}")
+    return {"message": f"TVA actualizat la {new_tva}% pentru {result.modified_count} produse", "modified_count": result.modified_count}
+
+@api_router.post("/companies/save")
+async def save_company_to_cache(data: dict, user: dict = Depends(get_current_user)):
+    """Salvează o firmă în cache-ul local (de la bridge)"""
+    cui = str(data.get("cui", "")).strip()
+    if not cui:
+        raise HTTPException(status_code=400, detail="CUI obligatoriu")
+    cache_doc = {k: v for k, v in data.items() if k != "_id"}
+    cache_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.companies_cache.update_one({"cui": cui}, {"$set": cache_doc}, upsert=True)
+    return {"message": "Firmă salvată în cache"}
 
 @api_router.get("/categories")
 async def get_categories(user: dict = Depends(get_current_user)):
@@ -1302,41 +1345,23 @@ def _parse_number(s: str) -> float:
 
 
 def _find_best_product_match(pdf_name: str, products: list) -> dict | None:
-    """Find best matching product by name similarity"""
+    """Find matching product - ONLY exact match (word by word).
+    Nu mai face potrivire aproximativă. Dacă produsul din PDF nu se găsește
+    identic în baza de date, returnează None → se creează ca produs NOU.
+    Asta permite ca același produs de la furnizori diferiți să aibă prețuri diferite.
+    """
     if not pdf_name or not products:
         return None
 
     pdf_lower = pdf_name.lower().strip()
-    best = None
-    best_score = 0
 
     for p in products:
         prod_lower = p["nume"].lower().strip()
-
-        # Exact match
+        # Potrivire exactă (cuvânt cu cuvânt)
         if pdf_lower == prod_lower:
             return {"id": p["id"], "nume": p["nume"], "confidence": 100}
 
-        # Containment check
-        if pdf_lower in prod_lower or prod_lower in pdf_lower:
-            score = 80
-            if score > best_score:
-                best_score = score
-                best = {"id": p["id"], "nume": p["nume"], "confidence": score}
-            continue
-
-        # Word overlap
-        pdf_words = set(pdf_lower.split())
-        prod_words = set(prod_lower.split())
-        if pdf_words and prod_words:
-            overlap = len(pdf_words & prod_words)
-            total = max(len(pdf_words), len(prod_words))
-            score = int((overlap / total) * 70)
-            if score > best_score and score >= 30:
-                best_score = score
-                best = {"id": p["id"], "nume": p["nume"], "confidence": score}
-
-    return best
+    return None
 
 
 # ==================== STOCK ROUTES ====================
@@ -1873,8 +1898,8 @@ async def bridge_ping():
 # ==================== HELD ORDERS (Stock Reservation) ====================
 
 async def expire_old_held_orders():
-    """Expire held orders older than 24 hours - stock STAYS deducted (not restored)"""
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    """Expire held orders older than 12 hours - stock STAYS deducted (not restored)"""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=12)).isoformat()
     expired_orders = await db.held_orders.find(
         {"status": "active", "created_at": {"$lt": cutoff}},
         {"_id": 0}
@@ -1905,7 +1930,7 @@ async def create_held_order(data: dict, user: dict = Depends(get_current_user)):
         "created_by_name": user.get("full_name", user["username"]),
         "status": "active",
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "expires_at": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+        "expires_at": (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
     }
     
     # Deduct stock for each item (reserve)

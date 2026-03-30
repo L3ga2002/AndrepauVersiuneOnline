@@ -15,6 +15,8 @@ export default function StartDayPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [soldManual, setSoldManual] = useState('');
+  const [showSoldInput, setShowSoldInput] = useState(false);
 
   const fetchSummary = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -33,7 +35,19 @@ export default function StartDayPage() {
 
   useEffect(() => { fetchSummary(); }, [fetchSummary]);
 
-  const startDay = () => navigate('/pos');
+  const startDay = async () => {
+    // Save manual starting balance if provided
+    if (soldManual && parseFloat(soldManual) > 0) {
+      try {
+        await fetch(`${API_URL}/cash/operation`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ type: 'CASH_IN', amount: parseFloat(soldManual), description: 'Sold inceput de zi (manual)' })
+        });
+      } catch {}
+    }
+    navigate('/pos');
+  };
 
   if (loading) {
     return (
@@ -87,6 +101,36 @@ export default function StartDayPage() {
                   {data?.cash_in > 0 && <p className="text-green-500">+{formatCurrency(data.cash_in)} intrare</p>}
                   {data?.cash_out > 0 && <p className="text-red-500">-{formatCurrency(data.cash_out)} iesire</p>}
                 </div>
+              </div>
+              {/* Manual starting balance */}
+              <div className="mt-4 pt-4 border-t border-border">
+                {!showSoldInput ? (
+                  <button
+                    onClick={() => setShowSoldInput(true)}
+                    className="text-sm text-primary hover:underline"
+                    data-testid="set-manual-balance-btn"
+                  >
+                    Seteaza sold manual de inceput de zi (optional)
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <label className="text-sm text-muted-foreground whitespace-nowrap">Sold initial:</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={soldManual}
+                      onChange={(e) => setSoldManual(e.target.value)}
+                      placeholder="0.00 RON"
+                      className="flex-1 h-10 px-3 rounded-md border border-border bg-background text-foreground text-sm"
+                      data-testid="manual-balance-input"
+                      autoFocus
+                    />
+                    <button onClick={() => { setShowSoldInput(false); setSoldManual(''); }} className="text-sm text-muted-foreground hover:text-foreground">
+                      Anuleaza
+                    </button>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

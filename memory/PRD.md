@@ -41,15 +41,17 @@ Aplicatie completa de gestiune magazin si POS (Point of Sale) pentru magazinul d
 23. **3 Facturi PDF Test** - DEDEMAN (8 prod), HORNBACH (6 prod), LEROY MERLIN (9 prod)
 24. **Cautare CUI via Bridge Local** - Fallback ANAF prin bridge (IP rezidential) cand VPS-ul e blocat
 25. **Bridge URL actualizat** - start_bridge.bat + actualizeaza_bridge.bat → andrepau.com
+26. **ANAF v9 Endpoint** - Cautare CUI functioneaza de pe VPS/server (v8 era blocat)
+27. **Import NIR - Potrivire Exacta** - Doar cuvant cu cuvant; produs NOU daca nu se gaseste identic
+28. **Buton Sterge Toate Produsele** - Cu dublu warning (trebuie scris "STERGE TOATE")
+29. **Deschidere Zi - Sold Manual Optional** - Camp optional pentru soldul de inceput de zi
+30. **TVA Bulk Update** - Schimbare cota TVA la toate produsele (preset 9/19/21/25%)
+31. **Comenzi in Asteptare 12h** - Expira la 12 ore (nu 24)
+32. **Login fara Demo** - Conturile demo nu mai sunt afisate
+33. **Import .xls (Excel vechi)** - Suport format .xls via xlrd + normalizare coloane (PretAchizitie, CotaTVA, StocInitial, UM=M→metru)
 
 ## Taskuri Viitoare
 - P1: Mod Offline Avansat
-- P1: Import NIR - Produs NOU daca nu e potrivire exacta (cuvant cu cuvant)
-- P1: Buton "Sterge toate produsele" cu dublu warning
-- P1: Deschidere Zi - Sold manual optional (NU trimite comenzi la casa de marcat)
-- P1: TVA - Schimbare cota la TOATE produsele
-- P1: Comenzi in asteptare - stergere la 12 ore (nu 24)
-- P1: Scoate conturile demo din ecranul de login
 - P2: Calculator rest + configurare sertar (ca la supermarket)
 - P2: Raport Z (End of Day) - DOAR dashboard vizualizare, fara comenzi fiscale
 - P2: Sectiune Update-uri ANAF

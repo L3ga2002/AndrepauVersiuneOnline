@@ -707,9 +707,84 @@ def get_status():
     except Exception as e:
         return jsonify({'connected': False, 'status': 'ERROR', 'message': str(e)})
 
-# ---------- COMANDA MANUALA - DEZACTIVATA (PRODUCTIE) ----------
-# Endpoint-ul /fiscal/test-command a fost eliminat pentru siguranta.
-# Comenzile se trimit doar prin aplicatia POS sau cloud queue.
+# ---------- CAUTARE CUI (ANAF PROXY) ----------
+
+@app.route('/anaf/search-cui', methods=['POST', 'OPTIONS'])
+def anaf_search_cui():
+    """
+    Cautare firma dupa CUI direct de pe PC-ul local (IP rezidential).
+    ANAF blocheaza IP-uri de datacenter/VPS, dar accepta IP-uri rezidentiale.
+    Bridge-ul ruleaza pe PC-ul din magazin = IP rezidential = ANAF merge.
+    """
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'ok'})
+    
+    try:
+        data = request.json or {}
+        cui = str(data.get('cui', '')).strip().upper().replace('RO', '').strip()
+        
+        if not cui:
+            return jsonify({'success': False, 'message': 'CUI este obligatoriu'}), 400
+        
+        try:
+            cui_int = int(cui)
+        except ValueError:
+            return jsonify({'success': False, 'message': 'CUI invalid'}), 400
+        
+        from datetime import date as date_type
+        today = date_type.today().strftime('%Y-%m-%d')
+        
+        anaf_url = 'https://webservicesp.anaf.ro/PlatitorTvaRest/api/v8/ws/tva'
+        payload = json.dumps([{'cui': cui_int, 'data': today}]).encode('utf-8')
+        
+        req = urllib.request.Request(anaf_url, data=payload, headers={
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        })
+        
+        resp = urllib.request.urlopen(req, timeout=15)
+        result = json.loads(resp.read().decode('utf-8'))
+        
+        if result.get('found') and len(result['found']) > 0:
+            company = result['found'][0]
+            dg = company.get('date_generale', {})
+            ads = company.get('adresa_sediu_social', {})
+            tva = company.get('inregistrare_scop_Tva', {})
+            
+            address_parts = []
+            if ads.get('sdenumire_Strada'):
+                street = ads.get('sdenumire_Strada', '')
+                nr = ads.get('snumar_Strada', '')
+                address_parts.append(f'{street} {nr}' if nr else street)
+            if ads.get('sdenumire_Localitate'):
+                address_parts.append(ads.get('sdenumire_Localitate'))
+            if ads.get('sdenumire_Judet'):
+                address_parts.append(f"Jud. {ads.get('sdenumire_Judet')}")
+            
+            return jsonify({
+                'success': True,
+                'cui': cui,
+                'denumire': dg.get('denumire', ''),
+                'adresa': ', '.join(address_parts) if address_parts else dg.get('adresa', ''),
+                'nr_reg_com': dg.get('nrRegCom', ''),
+                'telefon': dg.get('telefon', ''),
+                'cod_postal': ads.get('scod_Postal', '') or dg.get('codPostal', ''),
+                'platitor_tva': tva.get('scpTVA', False),
+                'stare': dg.get('stare_inregistrare', ''),
+                'localitate': ads.get('sdenumire_Localitate', ''),
+                'judet': ads.get('sdenumire_Judet', ''),
+                'source': 'anaf_bridge'
+            })
+        else:
+            return jsonify({'success': False, 'message': f'CUI {cui} nu a fost gasit in ANAF'}), 404
+    
+    except urllib.error.URLError as e:
+        logger.error(f'ANAF bridge error: {e}')
+        return jsonify({'success': False, 'message': f'Eroare ANAF: {str(e)}'}), 503
+    except Exception as e:
+        logger.error(f'ANAF bridge error: {e}')
+        return jsonify({'success': False, 'message': f'Eroare: {str(e)}'}), 500
 
 # ---------- LOGGING ----------
 

@@ -30,7 +30,7 @@ echo ============================================
 echo.
 
 cd /d "%TARGET%"
-python "%TARGET%\fiscal_bridge.py"
+python "%TARGET%\fiscal_bridge.py" "https://andrepau.com"
 
 if %errorlevel% neq 0 (
     echo.

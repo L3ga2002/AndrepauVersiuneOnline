@@ -1,7 +1,7 @@
 @echo off
 cd /d "%~dp0"
 echo ============================================
-echo   ANDREPAU POS - Bridge Service v3.1
+echo   ANDREPAU POS - Bridge Service v3.2
 echo   Casa de Marcat INCOTEX Succes M7
 echo ============================================
 echo.
@@ -12,7 +12,7 @@ echo Pagina test locala: http://localhost:5555/test
 echo.
 echo Asigurati-va ca SuccesDrv are "Start procesare" apasat!
 echo.
-python "%~dp0fiscal_bridge.py" "https://andrepau-stock.preview.emergentagent.com"
+python "%~dp0fiscal_bridge.py" "https://andrepau.com"
 if %errorlevel% neq 0 (
     echo.
     echo EROARE la pornire!

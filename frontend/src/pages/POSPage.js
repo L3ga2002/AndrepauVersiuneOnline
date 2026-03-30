@@ -671,6 +671,7 @@ export default function POSPage() {
     
     setSearchingCUI(true);
     try {
+      // Try 1: Server backend (VPS) → ANAF
       const response = await fetch(`${API_URL}/anaf/search-cui`, {
         method: 'POST',
         headers: {
@@ -689,17 +690,54 @@ export default function POSPage() {
           nr_reg_com: data.nr_reg_com || '',
           platitor_tva: data.platitor_tva || false
         });
-        if (data.from_cache) {
-          toast.success(`Firmă găsită în cache: ${data.denumire}`);
-        } else {
-          toast.success(`Firmă găsită: ${data.denumire}`);
-        }
-      } else {
-        const error = await response.json();
-        toast.error(error.detail || 'Firma nu a fost găsită');
+        toast.success(data.from_cache ? `Firmă găsită în cache: ${data.denumire}` : `Firmă găsită: ${data.denumire}`);
+        return;
       }
+      
+      // Server failed - try bridge local (IP rezidential)
+      try {
+        const bridgeResp = await fetch('http://localhost:5555/anaf/search-cui', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cui: invoiceData.cui })
+        });
+        
+        if (bridgeResp.ok) {
+          const bridgeData = await bridgeResp.json();
+          if (bridgeData.success) {
+            setInvoiceData({
+              ...invoiceData,
+              firma: bridgeData.denumire || '',
+              adresa: bridgeData.adresa || '',
+              nr_reg_com: bridgeData.nr_reg_com || '',
+              platitor_tva: bridgeData.platitor_tva || false
+            });
+            toast.success(`Firmă găsită via bridge local: ${bridgeData.denumire}`);
+            // Also save to server cache for future
+            try {
+              await fetch(`${API_URL}/companies/save`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({
+                  cui: bridgeData.cui, denumire: bridgeData.denumire,
+                  adresa: bridgeData.adresa, nr_reg_com: bridgeData.nr_reg_com,
+                  platitor_tva: bridgeData.platitor_tva, stare: bridgeData.stare,
+                  localitate: bridgeData.localitate, judet: bridgeData.judet
+                })
+              });
+            } catch {}
+            return;
+          }
+        }
+      } catch {
+        // Bridge not available - normal if not running locally
+      }
+      
+      // Both failed
+      const error = await response.json().catch(() => ({}));
+      toast.error(error.detail || 'ANAF nu este disponibil. Porniți bridge-ul local sau completați manual.');
     } catch (error) {
-      toast.error('Eroare la căutarea firmei');
+      toast.error('Eroare la căutarea firmei. Verificați conexiunea.');
     } finally {
       setSearchingCUI(false);
     }

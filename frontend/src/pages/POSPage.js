@@ -817,8 +817,9 @@ export default function POSPage() {
     setFiscalLoading(true);
     try {
       // Print fiscal receipt with CUI info
+      let fiscalResult = null;
       if (bridgeConnected) {
-        const fiscalResult = await printFiscalReceipt('numerar', total, 0, 0, {
+        fiscalResult = await printFiscalReceipt('numerar', total, 0, 0, {
           cui: invoiceData.platitor_tva ? `RO${invoiceData.cui.replace(/^RO/i, '')}` : invoiceData.cui,
           nume: invoiceData.firma,
           adresa: invoiceData.adresa
@@ -831,7 +832,8 @@ export default function POSPage() {
         toast.success('Factură fiscală printată!');
       }
       
-      await processSaleWithFiscal('numerar', total, 0, 0, !bridgeConnected);
+      // Save sale - skipFiscal=true because we already printed with CUI above
+      await processSaleWithFiscal('numerar', total, 0, 0, true);
     } catch {
       toast.error('Eroare la generarea facturii');
     } finally {

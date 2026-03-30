@@ -1,64 +1,63 @@
-<analysis>**original_problem_statement**: Complete store management and POS application for ANDREPAU construction materials shop. Includes stable payments, atomic stock, INCOTEX SUCCES M7 cash register integration (via local Python bridge), and automated NIR (Goods Receipt Note) management. 
+<analysis>**original_problem_statement**: Complete store management and POS application for ANDREPAU construction materials shop. Includes stable payments, atomic stock, INCOTEX SUCCES M7 cash register integration (via local Python bridge), and automated NIR (Goods Receipt Note) management. Application is deployed on a self-managed Hostinger VPS (Ubuntu 24.04).
 
 **PRODUCT REQUIREMENTS**:
 1. Stable Payment Processing with fiscal confirmation.
 2. Atomic Stock Deduction (only after fiscal receipt).
 3. Local Python bridge for INCOTEX printer (No phantom printing).
-4. Native Desktop App (Electron) for offline capabilities.
+4. Native Desktop App (Electron) for offline capabilities (Currently PAUSED).
 5. Held Sales Management.
 6. Stock Alerts & Prevention.
-7. Automated NIR creation from Supplier PDF Invoices (e-Factura).
-8. Product Import via Excel (.xlsx).
-9. **Production Deployment:** App must run on a self-managed Hostinger VPS (Ubuntu 24.04).
+7. Automated NIR creation from Supplier PDF Invoices (e-Factura) & Excel imports.
 
 **User's preferred language**: Romanian (You MUST automatically detect the user's primary language from their messages inside the <trajectory> tag and INSTRUCT next agent to respond in the user's preferred language only)
 
 **what currently exists?** 
-A fully deployed React + FastAPI + MongoDB POS application running live on a Hostinger VPS (Ubuntu 24.04) secured with Nginx and Let's Encrypt SSL. It has advanced inventory capabilities (PDF e-Factura parsing, Excel imports, dual-search POS). A local Python bridge handles INCOTEX fiscal printing. The Electron desktop app is temporarily paused.
+A fully functional React + FastAPI + MongoDB POS application running on a Hostinger VPS. It features an advanced POS interface, inventory management, PDF/Excel invoice parsing, and a local Python bridge for fiscal printing. Recently, the CUI search was fixed to use ANAF v9, and multiple quality-of-life UI/UX improvements were added (bulk delete, bulk TVA update,  support).
 
 **Last working item**: 
-    - Last item agent was working: Live Server Deployment. The agent walked the user through provisioning a Hostinger VPS, installing Linux dependencies, pulling the codebase, migrating 5700+ DB records, setting up Nginx, mapping DNS, configuring SSL, and writing an auto-update bash script.
+    - Last item agent was working: Implementing a batch of 6 P1 user requests and fixing the ANAF CUI search bug. This included adding  legacy support for product imports, removing demo credentials from UI, bulk delete/TVA buttons, optional starting balance, exact matching for NIR imports, and reducing held order expiration to 12 hours.
     - Status: COMPLETED
     - Agent Testing Done: Y
-    - Which testing method agent to use? NA (DevOps/deployment session; agent verified backend logs and cURL commands).
-    - User Testing Done: Y (User successfully logged into the live production domain and verified all data was present).
+    - Which testing method agent to use? testing_agent_v3_fork (Iteration 11) + curl + screenshot tool.
+    - User Testing Done: N (User has not yet verified the final batch on their live VPS).
 
 **All Pending/In progress Issue list**: 
   Issue 1: **Electron app shows a black screen after installation on user's PC** (Priority: P1)
      - Attempted fixes: Changed  to  in a previous session to fix  protocol rendering.
-     - Next debug checklist: Ask the user if they want to resume the Electron app testing (they explicitly paused it this session to focus on VPS deployment). If yes, ask them to rebuild with yarn run v1.22.22
-info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command. and run the .
+     - Next debug checklist: Ask the user if they want to resume the Electron app testing (they explicitly paused it).
      - Why fix this issue and what will be achieved with the fix? Mandatory to provide the native offline application.
-     - Status: USER VERIFICATION PENDING
+     - Status: USER VERIFICATION PENDING / BLOCKED (User paused it)
      - Is recurring issue? N
      - Should Test frontend/backend/both after fix? Frontend (via User manual testing).
-     - Blocked on other issue: User explicitly requested to pause Electron development for now.
+     - Blocked on other issue: User explicitly requested to pause Electron development.
 
 **In progress Task List**: 
-  Task 1: **Finalize Electron Integration & Offline Flow** (Priority: P1)
-     - Where to resume: Configure the frontend to communicate directly with  when running inside Electron or when offline, bypassing the cloud queue.
-     - What will be achieved with this? True offline receipt printing.
-     - Status: BLOCKED
-     - Should Test frontend/backend/both after fix? Frontend.
-     - Blocked on something: Blocked on user confirming they are ready to resume Electron testing.
+  *(No active tasks in progress, last batch was successfully finished)*
 
 **Upcoming and Future Tasks**
     Upcoming Tasks:
-    - **P1: Advanced Offline Mode Logic:** Route fiscal commands directly to the local bridge if the cloud is unreachable.
-    - **P2: End of Day (Z Report) Dashboard:** A summary report generated automatically at the end of the day.
-    
+    - **P1: Calculator Rest & Deschidere Sertar:** Add a cash calculator modal (input received cash -> show change) and trigger the cash drawer to open (hardware integration).
+    - **P2: Raport Z Dashboard:** UI representation of the end-of-day Z Report (Note: User strictly requested this to be *view only*, no automatic printing to the fiscal register without their explicit command).
+    - **P2: Secțiune Update-uri ANAF:** A dedicated section to show ANAF updates/news.
+    - **P2: Optimizare Mobilă:** Ensure the app looks and works well on mobile devices.
+
     Future Tasks:
-    - **P3: Bridge Auto-Start:** Create a unified script to start the Python bridge and Electron app on Windows startup.
+    - **P3: Refactoring :** Extract the 2400+ lines of API routes into a structured  directory.
+    - **P3: Bridge Auto-Start:** Create a unified script to start the Python bridge on Windows startup.
     - **P4: Verifone V200c Integration:** Blocked on user obtaining ECR documentation.
-    - **P5: Import NIR din Excel:** Allow uploading supplier invoices in Excel format, not just PDF (Feature request from backlog).
-    - **P6: Istoric Prețuri pe Furnizor / Comparator de prețuri:** UI to view price evolution per product from different suppliers (Agent suggestion).
+    - **P4: Import NIR din Excel:** Dedicated flow for mapping Excel columns to NIR imports.
+    - **P4: Istoric Prețuri pe Furnizor / Comparator de prețuri:** UI to view price evolution per product.
 
 **Completed work in this session**
-- Guided user through purchasing and configuring a Hostinger VPS (Ubuntu 24.04). (DONE)
-- Installed Node.js, Python, MongoDB, Nginx, and Certbot via SSH terminal. (DONE)
-- Extracted 5700+ production DB records (Products, Suppliers, NIRs) from the Emergent cloud, committed them to the repo, and guided the user to import them via  on the VPS. (DONE)
-- Configured domain DNS and Let's Encrypt SSL. (DONE)
-- Created an auto-deployment script () on the VPS to streamline future updates pushed via GitHub. (DONE)
+- Fixed Bridge target URLs in  and  to point to the production domain. (DONE)
+- Fixed ANAF CUI Search by migrating from blocked v8 endpoint to v9 (). (DONE)
+- Added  dependency to support legacy  product imports. (DONE)
+- Updated NIR matching logic to exact word-by-word match. (DONE)
+- Added Șterge Toate Produsele backend route and frontend warning modal. (DONE)
+- Made starting balance optional in the Deschidere Zi interface. (DONE)
+- Removed hardcoded demo credentials from the . (DONE)
+- Added Bulk TVA change functionality (e.g., change 21% to 25% for all products at once). (DONE)
+- Updated held orders () to expire after 12 hours instead of 24 hours. (DONE)
 
 **Earlier issues found/mentioned but not fixed**
 None.
@@ -72,53 +71,55 @@ None.
 
 
 **Key Technical Concepts**
-- **Self-Hosted Production Environment:** The app no longer relies solely on the Emergent cloud platform. The live production instance is strictly bound to the user's custom VPS.
-- **Auto-Updater Script:** An  script on the user's VPS does a , , and yarn run v1.22.22
-info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command.. 
+- **VPS Deployment:** The app runs on a self-managed VPS. It relies on real-time fallback to ANAF v9 since the VPS does not have the massive 3.7 million ONRC local DB cache that the preview environment has.
+- **Hardware Bridge:** A local Python script () that runs on the user's Windows PC, polling the cloud server for fiscal commands and interfacing with the INCOTEX Succes M7.
 
 **key DB schema**
   - **products**: , , , , , , , , .
-  - **nirs**: , , , , .
+  - **held_orders**: uid=0(root) gid=0(root) groups=0(root), , , , .
+  - **companies_cache**: Cache for CUI lookups.
 
 **changes in tech stack**
-  - Moved from Emergent Cloud deployment to Custom VPS (Ubuntu 24.04, Nginx, Certbot SSL).
+  - Added  to backend  to support  file parsing alongside .
 
 **All files of reference** 
-- : DB dumps containing the production data, created strictly for importing into the new VPS.
+- : Updated with ANAF v9, bulk routes, 12h expiry, and exact NIR matching.
+- : Updated ANAF v9 URL.
+- : Updated with Bulk TVA and Delete All UI.
+- : Updated to make starting balance optional.
+- : Removed demo credential text.
 
 **Areas that need refactoring**: 
--  is over 2400 lines long. API routes desperately need to be extracted into a  directory for long-term scalability.
+-  is nearly 2500 lines long. Extracting API routes into a  folder is a P3 priority for maintainability.
 
 **key api endpoints**
-- : Parses invoices.
-- : Accepts  for combined filtering.
-- : Seeds database users/roles.
+- : Uses ANAF v9 for company lookup.
+- : Clears the product catalog.
+- : Bulk updates the TVA percentage for all products.
+- : Now accepts , , and .
 
 **Critical Info for New Agent**
 - **Language Requirement:** The user communicates strictly in Romanian. You must reply in Romanian.
-- **Deployment Workflow Alert:** Any future code updates made in the Emergent platform MUST be synced to the user's live server. The process is: 1) Agent makes code changes. 2) Instruct user to click Save to Github. 3) Instruct user to run  on their VPS SSH terminal.
-- **Dependencies Alert:** If you add new Python packages () or Node packages (), the  script does **not** install them automatically. You must explicitly tell the user to run  or yarn install v1.22.22
-[1/4] Resolving packages...
-[2/4] Fetching packages...
-[3/4] Linking dependencies...
-[4/4] Building fresh packages...
-success Saved lockfile.
-Done in 0.03s. on their VPS when making dependency changes.
-- **Electron is Paused:** The user explicitly paused Electron  debugging to focus on deployment. Ask before resuming any Electron tasks.
+- **Dependency Alert:** The agent added  to  this session. You **must** remind the user to run  on their VPS SSH terminal during their next update, as their custom  script does not auto-install new Python dependencies.
+- **ANAF API:** Do NOT use ANAF v8. It actively blocks datacenter IPs. The current implementation uses ANAF v9 (), which was tested and works perfectly from the VPS.
 
 **documents and test reports created in this job** 
-  -  (Not updated this session as it was purely devops)
+  - 
+  - 
   - 
 
 **Last 10 User Messages and any pending HUMAN messages** 
- - User requested help deploying to Hostinger. (DONE)
- - User bought the VPS and shared details. (DONE)
- - User executed multiple bash commands supplied by the agent in the Hostinger web terminal. (DONE)
- - User stated that the app opened, but login failed. Agent advised them to run the DB seed script. (DONE)
- - User realized the DB seed script only provided 27 products instead of the 5700+ from their cloud session. (DONE)
- - User pulled the  files generated by the agent and imported the 5700+ products via . (DONE)
- - User successfully mapped the DNS domain and enabled Let's Encrypt SSL. (DONE)
- - User verified the live production app works flawlessly and asked how to handle future updates. (DONE)
+ - User requested  export compatibility to import legacy products. (DONE)
+ - User asked to change NIR matching to exact word-by-word. (DONE)
+ - User requested a Delete all products button with a warning. (DONE)
+ - User requested starting balance to be optional on the Start Day page. (DONE)
+ - User requested a change calculator for the POS and cash drawer opening logic. (PENDING - P1)
+ - User requested removing demo credentials from the login screen. (DONE)
+ - User requested a section for ANAF updates. (PENDING - P2)
+ - User requested bulk TVA update for all products (e.g., 21% to 25%). (DONE)
+ - User requested mobile optimization. (PENDING - P2)
+ - User requested Z Report explanation and viewing capabilities (without forced printing). (PENDING - P2)
+ - User requested held orders to expire in 12 hours instead of 24. (DONE)
  - *No pending human actions.*
 
 **Project Health Check:**
@@ -127,9 +128,10 @@ Done in 0.03s. on their VPS when making dependency changes.
 
 **3rd Party Integrations** 
 - INCOTEX SUCCES M7 (Hardware Printer via local bridge) - NO User Key Required.
+- ANAF v9 API (Public CUI Lookup) - NO User Key Required.
 
 **Testing status**
-  - Testing agent used after significant changes: NO (Codebase was untouched; session was 100% focused on manual server deployment via SSH).
+  - Testing agent used after significant changes: YES (Iteration 11 tested all new bulk operations, login UI, and held orders logic).
   - Troubleshoot agent used after agent stuck in loop: NO.
   - Test files created: None.
   - Known regressions: None.
@@ -139,4 +141,4 @@ Done in 0.03s. on their VPS when making dependency changes.
 - Casier:  / 
 
 **What agent forgot to execute**
-- Nothing. The agent perfectly executed a complex full-stack Linux deployment by guiding a non-technical user step-by-step through terminal commands.</analysis>
+- Nothing from the agreed scope was missed. The remaining items from the user's prompt (Cash calculator, ANAF updates UI, Z-report UI, mobile optimizations) were correctly categorized into the backlog/upcoming tasks as agreed with the user.</analysis>

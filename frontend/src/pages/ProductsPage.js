@@ -76,6 +76,8 @@ export default function ProductsPage() {
   const [csvResult, setCsvResult] = useState(null);
   const [csvItems, setCsvItems] = useState([]);
   const [csvImporting, setCsvImporting] = useState(false);
+  const [csvPage, setCsvPage] = useState(1);
+  const CSV_PAGE_SIZE = 100;
   const csvFileRef = useRef(null);
 
   // Delete all & TVA bulk
@@ -337,6 +339,7 @@ export default function ProductsPage() {
     setCsvParsing(true);
     setCsvResult(null);
     setCsvItems([]);
+    setCsvPage(1);
     setShowCsvDialog(true);
 
     const formData = new FormData();
@@ -387,26 +390,50 @@ export default function ProductsPage() {
 
     setCsvImporting(true);
     try {
-      const response = await fetch(`${API_URL}/products/import-csv/confirm`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ items: enabledItems })
-      });
+      // Process in batches of 500 to avoid timeout
+      const BATCH_SIZE = 500;
+      let totalCreated = 0;
+      let totalUpdated = 0;
+      let totalErrors = [];
+      const totalBatches = Math.ceil(enabledItems.length / BATCH_SIZE);
 
-      if (response.ok) {
-        const result = await response.json();
-        toast.success(`Import finalizat: ${result.created} create, ${result.updated} actualizate`);
-        setShowCsvDialog(false);
-        setCsvResult(null);
-        setCsvItems([]);
-        fetchProducts();
-      } else {
-        const err = await response.json();
-        toast.error(err.detail || 'Eroare la import');
+      for (let i = 0; i < enabledItems.length; i += BATCH_SIZE) {
+        const batch = enabledItems.slice(i, i + BATCH_SIZE);
+        const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+        
+        if (totalBatches > 1) {
+          toast.info(`Se importă lot ${batchNum} din ${totalBatches}...`);
+        }
+
+        const response = await fetch(`${API_URL}/products/import-csv/confirm`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ items: batch })
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          totalCreated += result.created;
+          totalUpdated += result.updated;
+          if (result.errors) totalErrors.push(...result.errors);
+        } else {
+          const err = await response.json();
+          toast.error(err.detail || `Eroare la lotul ${batchNum}`);
+          break;
+        }
       }
+
+      toast.success(`Import finalizat: ${totalCreated} create, ${totalUpdated} actualizate`);
+      if (totalErrors.length > 0) {
+        toast.warning(`${totalErrors.length} erori la import`);
+      }
+      setShowCsvDialog(false);
+      setCsvResult(null);
+      setCsvItems([]);
+      fetchProducts();
     } catch (error) {
       toast.error('Eroare la import');
     } finally {
@@ -1059,72 +1086,96 @@ export default function ProductsPage() {
                 </div>
               </div>
 
-              {/* Items table */}
-              <ScrollArea className="h-[400px]">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-border">
-                      <TableHead className="w-10"></TableHead>
-                      <TableHead className="text-muted-foreground">Denumire</TableHead>
-                      <TableHead className="text-muted-foreground">Categorie</TableHead>
-                      <TableHead className="text-muted-foreground text-right">Preț Achiziție</TableHead>
-                      <TableHead className="text-muted-foreground text-right">Preț Vânzare</TableHead>
-                      <TableHead className="text-muted-foreground text-right">Stoc</TableHead>
-                      <TableHead className="text-muted-foreground text-center">Acțiune</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {csvItems.map(item => (
-                      <TableRow 
-                        key={item.idx} 
-                        className={`border-border ${!item.enabled ? 'opacity-40' : ''}`}
-                        data-testid={`csv-item-${item.idx}`}
-                      >
-                        <TableCell>
-                          <button
-                            onClick={() => toggleCsvItem(item.idx)}
-                            className={`w-6 h-6 rounded-sm border flex items-center justify-center transition-colors ${
-                              item.enabled 
-                                ? 'bg-primary border-primary text-primary-foreground' 
-                                : 'border-border text-transparent'
-                            }`}
-                            data-testid={`csv-toggle-${item.idx}`}
-                          >
-                            <Check className="w-4 h-4" />
-                          </button>
-                        </TableCell>
-                        <TableCell>
-                          <p className="text-foreground font-medium">{item.nume}</p>
-                          {item.cod_bare && (
-                            <p className="text-xs font-mono text-muted-foreground">{item.cod_bare}</p>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">{item.categorie}</TableCell>
-                        <TableCell className="text-right font-mono text-foreground">
-                          {item.pret_achizitie.toFixed(2)} RON
-                        </TableCell>
-                        <TableCell className="text-right font-mono font-bold text-primary">
-                          {item.pret_vanzare.toFixed(2)} RON
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-foreground">
-                          {item.stoc} {item.unitate}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {item.action === 'create' ? (
-                            <span className="inline-flex items-center px-2 py-1 rounded-sm text-xs font-medium bg-green-500/10 text-green-500">
-                              <Plus className="w-3 h-3 mr-1" /> Nou
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2 py-1 rounded-sm text-xs font-medium bg-blue-500/10 text-blue-500">
-                              <Edit className="w-3 h-3 mr-1" /> Actualizare
-                            </span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </ScrollArea>
+              {/* Items table - paginated */}
+              {(() => {
+                const csvTotalPages = Math.ceil(csvItems.length / CSV_PAGE_SIZE);
+                const paginatedItems = csvItems.slice((csvPage - 1) * CSV_PAGE_SIZE, csvPage * CSV_PAGE_SIZE);
+                return (
+                  <>
+                    {csvItems.length > CSV_PAGE_SIZE && (
+                      <div className="flex items-center justify-between px-1 py-2 text-sm text-muted-foreground">
+                        <span>Pagina {csvPage} din {csvTotalPages} ({csvItems.length} produse total)</span>
+                        <div className="flex gap-1">
+                          <Button variant="outline" size="sm" disabled={csvPage <= 1} onClick={() => setCsvPage(p => p - 1)} className="h-7 px-2 text-xs border-border">Anterior</Button>
+                          <Button variant="outline" size="sm" disabled={csvPage >= csvTotalPages} onClick={() => setCsvPage(p => p + 1)} className="h-7 px-2 text-xs border-border">Următor</Button>
+                        </div>
+                      </div>
+                    )}
+                    <ScrollArea className="h-[400px]">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="border-border">
+                            <TableHead className="w-10"></TableHead>
+                            <TableHead className="text-muted-foreground">Denumire</TableHead>
+                            <TableHead className="text-muted-foreground">Categorie</TableHead>
+                            <TableHead className="text-muted-foreground text-right">Preț Achiziție</TableHead>
+                            <TableHead className="text-muted-foreground text-right">Preț Vânzare</TableHead>
+                            <TableHead className="text-muted-foreground text-right">Stoc</TableHead>
+                            <TableHead className="text-muted-foreground text-center">Acțiune</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {paginatedItems.map(item => (
+                            <TableRow 
+                              key={item.idx} 
+                              className={`border-border ${!item.enabled ? 'opacity-40' : ''}`}
+                              data-testid={`csv-item-${item.idx}`}
+                            >
+                              <TableCell>
+                                <button
+                                  onClick={() => toggleCsvItem(item.idx)}
+                                  className={`w-6 h-6 rounded-sm border flex items-center justify-center transition-colors ${
+                                    item.enabled 
+                                      ? 'bg-primary border-primary text-primary-foreground' 
+                                      : 'border-border text-transparent'
+                                  }`}
+                                  data-testid={`csv-toggle-${item.idx}`}
+                                >
+                                  <Check className="w-4 h-4" />
+                                </button>
+                              </TableCell>
+                              <TableCell>
+                                <p className="text-foreground font-medium">{item.nume}</p>
+                                {item.cod_bare && (
+                                  <p className="text-xs font-mono text-muted-foreground">{item.cod_bare}</p>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground text-sm">{item.categorie}</TableCell>
+                              <TableCell className="text-right font-mono text-foreground">
+                                {item.pret_achizitie.toFixed(2)} RON
+                              </TableCell>
+                              <TableCell className="text-right font-mono font-bold text-primary">
+                                {item.pret_vanzare.toFixed(2)} RON
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-foreground">
+                                {item.stoc} {item.unitate}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {item.action === 'create' ? (
+                                  <span className="inline-flex items-center px-2 py-1 rounded-sm text-xs font-medium bg-green-500/10 text-green-500">
+                                    <Plus className="w-3 h-3 mr-1" /> Nou
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center px-2 py-1 rounded-sm text-xs font-medium bg-blue-500/10 text-blue-500">
+                                    <Edit className="w-3 h-3 mr-1" /> Actualizare
+                                  </span>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </ScrollArea>
+                    {csvItems.length > CSV_PAGE_SIZE && (
+                      <div className="flex items-center justify-center gap-1 py-2">
+                        <Button variant="outline" size="sm" disabled={csvPage <= 1} onClick={() => setCsvPage(p => p - 1)} className="h-7 px-2 text-xs border-border">Anterior</Button>
+                        <span className="text-xs text-muted-foreground px-2">{csvPage} / {csvTotalPages}</span>
+                        <Button variant="outline" size="sm" disabled={csvPage >= csvTotalPages} onClick={() => setCsvPage(p => p + 1)} className="h-7 px-2 text-xs border-border">Următor</Button>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           ) : null}
 

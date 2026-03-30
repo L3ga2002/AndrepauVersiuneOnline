@@ -621,14 +621,17 @@ async def import_products_file(file: UploadFile = File(...), user: dict = Depend
 
 @api_router.post("/products/import-csv/confirm")
 async def confirm_import_products_csv(data: dict, user: dict = Depends(require_admin)):
-    """Confirm and execute the CSV import"""
+    """Confirm and execute the CSV import using bulk operations for performance"""
     items = data.get("items", [])
     if not items:
         raise HTTPException(status_code=400, detail="Nu sunt produse de importat")
 
+    from pymongo import UpdateOne, InsertOne
+
     created = 0
     updated = 0
     errors = []
+    operations = []
 
     for item in items:
         try:
@@ -644,10 +647,10 @@ async def confirm_import_products_csv(data: dict, user: dict = Depends(require_a
                 }
                 if item.get("cod_bare"):
                     update_fields["cod_bare"] = item["cod_bare"]
-                await db.products.update_one(
+                operations.append(UpdateOne(
                     {"id": item["existing_id"]},
                     {"$set": update_fields}
-                )
+                ))
                 updated += 1
             else:
                 product_doc = {
@@ -665,10 +668,20 @@ async def confirm_import_products_csv(data: dict, user: dict = Depends(require_a
                     "furnizor_id": None,
                     "created_at": datetime.now(timezone.utc).isoformat()
                 }
-                await db.products.insert_one(product_doc)
+                operations.append(InsertOne(product_doc))
                 created += 1
         except Exception as e:
             errors.append(f"Eroare la '{item.get('nume', '?')}': {str(e)}")
+
+    # Execute in batches of 500
+    if operations:
+        BATCH = 500
+        for i in range(0, len(operations), BATCH):
+            batch = operations[i:i+BATCH]
+            try:
+                await db.products.bulk_write(batch, ordered=False)
+            except Exception as e:
+                errors.append(f"Eroare bulk batch {i//BATCH+1}: {str(e)}")
 
     return {
         "created": created,

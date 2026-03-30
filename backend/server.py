@@ -566,8 +566,8 @@ async def import_products_file(file: UploadFile = File(...), user: dict = Depend
 
             sell_price_str = row[col_map["pret_vanzare"]].strip() if col_map.get("pret_vanzare") is not None and col_map["pret_vanzare"] < len(row) else "0"
             sell_price = _parse_number(sell_price_str)
-            if sell_price <= 0:
-                errors.append(f"Rândul {row_idx}: Preț vânzare invalid pentru '{name}'")
+            if sell_price < 0:
+                errors.append(f"Rândul {row_idx}: Preț vânzare negativ pentru '{name}'")
                 continue
 
             barcode = row[col_map["cod_bare"]].strip() if col_map.get("cod_bare") is not None and col_map["cod_bare"] < len(row) else ""

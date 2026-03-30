@@ -36,24 +36,24 @@ Aplicatie completa de gestiune magazin si POS (Point of Sale) pentru magazinul d
 18. **Import NIR din PDF** - PyMuPDF blocks, creare automata produse noi, detectare furnizor
 19. **Import CSV Produse** - Preview, template, Nou/Actualizare
 20. **Post-NIR Coduri de Bare** - Dialog scanare coduri dupa orice NIR
-21. **Cautare cu Filtru Pret Separat** - Camp denumire (stanga) + Camp pret optional (dreapta), ex: "pompa" + "620 RON" → gaseste pompa cu pret ~620
+21. **Cautare cu Filtru Pret Separat** - Camp denumire (stanga) + Camp pret optional (dreapta)
 22. **Cautare Fuzzy Multi-cuvant** - Orice cuvant din orice pozitie
-23. **3 Facturi PDF Test** - DEDEMAN (8 prod), HORNBACH (6 prod), LEROY MERLIN (9 prod)
-24. **Cautare CUI via Bridge Local** - Fallback ANAF prin bridge (IP rezidential) cand VPS-ul e blocat
+23. **3 Facturi PDF Test** - DEDEMAN, HORNBACH, LEROY MERLIN
+24. **Cautare CUI via Bridge Local** - Fallback ANAF prin bridge
 25. **Bridge URL actualizat** - start_bridge.bat + actualizeaza_bridge.bat → andrepau.com
-26. **ANAF v9 Endpoint** - Cautare CUI functioneaza de pe VPS/server (v8 era blocat)
-27. **Import NIR - Potrivire Exacta** - Doar cuvant cu cuvant; produs NOU daca nu se gaseste identic
-28. **Buton Sterge Toate Produsele** - Cu dublu warning (trebuie scris "STERGE TOATE")
-29. **Deschidere Zi - Sold Manual Optional** - Camp optional pentru soldul de inceput de zi
-30. **TVA Bulk Update** - Schimbare cota TVA la toate produsele (preset 9/19/21/25%)
-31. **Comenzi in Asteptare 12h** - Expira la 12 ore (nu 24)
+26. **ANAF v9 Endpoint** - Cautare CUI functioneaza de pe VPS/server
+27. **Import NIR - Potrivire Exacta** - Doar cuvant cu cuvant
+28. **Buton Sterge Toate Produsele** - Cu dublu warning
+29. **Deschidere Zi - Sold Manual Optional**
+30. **TVA Bulk Update** - Schimbare cota TVA la toate produsele
+31. **Comenzi in Asteptare 12h** - Expira la 12 ore
 32. **Login fara Demo** - Conturile demo nu mai sunt afisate
-33. **Import .xls (Excel vechi)** - Suport format .xls via xlrd + normalizare coloane (PretAchizitie, CotaTVA, StocInitial, UM=M→metru)
+33. **Import .xls (Excel vechi)** - Suport format .xls via xlrd
+34. **Import XLS Optimizat** - Paginare dialog (100/pag), bulk_write MongoDB, import in loturi 500, pret 0 permis
 
 ## Taskuri Viitoare
-- P1: Mod Offline Avansat
-- P2: Calculator rest + configurare sertar (ca la supermarket)
-- P2: Raport Z (End of Day) - DOAR dashboard vizualizare, fara comenzi fiscale
+- P1: Calculator rest + configurare sertar (cash calculator)
+- P2: Raport Z (End of Day) - DOAR dashboard vizualizare
 - P2: Sectiune Update-uri ANAF
 - P2: Optimizare mobila (responsive)
 - P3: Refactoring server.py (separare rute)

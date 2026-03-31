@@ -1,63 +1,64 @@
-<analysis>**original_problem_statement**: Complete store management and POS application for ANDREPAU construction materials shop. Includes stable payments, atomic stock, INCOTEX SUCCES M7 cash register integration (via local Python bridge), and automated NIR (Goods Receipt Note) management. Application is deployed on a self-managed Hostinger VPS (Ubuntu 24.04).
+<analysis>Here is the handover summary for the next agent:
 
-**PRODUCT REQUIREMENTS**:
+**original_problem_statement**: Complete store management and POS application for ANDREPAU construction materials shop. Includes stable payments, atomic stock, INCOTEX SUCCES M7 cash register integration (via local Python bridge), and automated NIR (Goods Receipt Note) management. Application is deployed on a self-managed Hostinger VPS (Ubuntu 24.04).
+PRODUCT REQUIREMENTS: 
 1. Stable Payment Processing with fiscal confirmation.
 2. Atomic Stock Deduction (only after fiscal receipt).
 3. Local Python bridge for INCOTEX printer (No phantom printing).
-4. Native Desktop App (Electron) for offline capabilities (Currently PAUSED).
-5. Held Sales Management.
-6. Stock Alerts & Prevention.
-7. Automated NIR creation from Supplier PDF Invoices (e-Factura) & Excel imports.
+4. Held Sales Management.
+5. Automated NIR creation from Supplier PDF Invoices (e-Factura) & Excel imports.
 
-**User's preferred language**: Romanian (You MUST automatically detect the user's primary language from their messages inside the <trajectory> tag and INSTRUCT next agent to respond in the user's preferred language only)
+**User's preferred language**: Romanian (You MUST automatically detect the user's primary language from their messages inside the <trajectory> tag and INSTRUCT next agent to respond in the user's preferred language only. The user communicates exclusively in Romanian).
 
 **what currently exists?** 
-A fully functional React + FastAPI + MongoDB POS application running on a Hostinger VPS. It features an advanced POS interface, inventory management, PDF/Excel invoice parsing, and a local Python bridge for fiscal printing. Recently, the CUI search was fixed to use ANAF v9, and multiple quality-of-life UI/UX improvements were added (bulk delete, bulk TVA update,  support).
+A fully functional React + FastAPI + MongoDB POS application running on a Hostinger VPS. It features an advanced POS interface, inventory management, PDF/Excel invoice parsing, and a local Python bridge for fiscal printing. In this session, the application was highly optimized to support massive  imports (pagination & bulk writing), and critical bugs involving duplicate fiscal receipts and unresponsive keyboard shortcuts were resolved.
 
 **Last working item**: 
-    - Last item agent was working: Implementing a batch of 6 P1 user requests and fixing the ANAF CUI search bug. This included adding  legacy support for product imports, removing demo credentials from UI, bulk delete/TVA buttons, optional starting balance, exact matching for NIR imports, and reducing held order expiration to 12 hours.
-    - Status: COMPLETED
-    - Agent Testing Done: Y
-    - Which testing method agent to use? testing_agent_v3_fork (Iteration 11) + curl + screenshot tool.
-    - User Testing Done: N (User has not yet verified the final batch on their live VPS).
+    - Last item agent was working: The agent was organizing and prioritizing a new list of user requests into  after successfully resolving a batch of critical bugs. The agent briefly started working on the P1 fixes (TVA 21% default, Start Day balance save button) but **reverted** the code as the user explicitly asked to just update the list and stop so they could create a clean fork.
+    - Status: NONE (Clean slate ready for the next agent).
+    - Agent Testing Done: Y (for previously completed bug fixes).
+    - Which testing method agent to use? Screenshot tool / manual testing by curl / testing agent for larger feature batches.
+    - User Testing Done: N
 
 **All Pending/In progress Issue list**: 
-  Issue 1: **Electron app shows a black screen after installation on user's PC** (Priority: P1)
-     - Attempted fixes: Changed  to  in a previous session to fix  protocol rendering.
-     - Next debug checklist: Ask the user if they want to resume the Electron app testing (they explicitly paused it).
-     - Why fix this issue and what will be achieved with the fix? Mandatory to provide the native offline application.
-     - Status: USER VERIFICATION PENDING / BLOCKED (User paused it)
+  Issue 1: **Electron app shows a black screen after installation on user's PC**
+     - Attempted fixes: Changed  to  previously.
+     - Next debug checklist: Ask the user if they want to resume the Electron app testing.
+     - Why fix this issue and what will be achieved with the fix? Required for offline capabilities.
+     - Status: BLOCKED (User paused it).
      - Is recurring issue? N
-     - Should Test frontend/backend/both after fix? Frontend (via User manual testing).
-     - Blocked on other issue: User explicitly requested to pause Electron development.
+     - Should Test frontend/backend/both after fix? Frontend.
 
 **In progress Task List**: 
-  *(No active tasks in progress, last batch was successfully finished)*
+  *(None. The agent intentionally reverted partial work on P1 tasks to allow for a clean handoff).*
 
 **Upcoming and Future Tasks**
-    Upcoming Tasks:
-    - **P1: Calculator Rest & Deschidere Sertar:** Add a cash calculator modal (input received cash -> show change) and trigger the cash drawer to open (hardware integration).
-    - **P2: Raport Z Dashboard:** UI representation of the end-of-day Z Report (Note: User strictly requested this to be *view only*, no automatic printing to the fiscal register without their explicit command).
-    - **P2: Secțiune Update-uri ANAF:** A dedicated section to show ANAF updates/news.
-    - **P2: Optimizare Mobilă:** Ensure the app looks and works well on mobile devices.
-
+    Upcoming Tasks (P1 / P2 priority as negotiated with user):
+    - **P1: TVA implicit 21%** - Set default tax to 21% instead of 19% when adding a product manually.
+    - **P1: Buton Salvare Sold Deschidere Zi** - Add an 'Enter' or 'Save' button in the Start Day screen to persist the starting balance.
+    - **P1: Coș POS persistent** - Ensure the shopping cart doesn't empty when navigating away from the POS tab to other pages (Needs Context or LocalStorage).
+    - **P1: Calculator Rest & Deschidere Sertar** - Add a cash calculator modal (input received cash -> show change) and trigger the cash drawer to open (hardware integration via INCOTEX).
+    - **P1: Detalii bon** - Clicking on a receipt in the history should expand to show the purchased items.
+    - **P1: Copiere bon (STRICT)** - Trigger a COPY command to the INCOTEX printer for an existing receipt. *Crucial: DO NOT issue a new fiscal receipt, it must be clearly marked as a copy by the hardware.*
+    - **P1: Light Mode** - Add a toggle for a light theme UI.
+    - **P1: Sold casă vizibil la Operațiuni Casă** - Display the current cash balance in the Operations tab, not just the Start Day tab.
+    - **P1: Sumă card la Deschidere Zi** - Show the total amount of successfully printed card transactions in the Start Day summary.
+    - **P2: Raport Z Dashboard** - UI representation of the end-of-day Z Report (View only, no forced printing).
+    - **P2: Secțiune Update-uri ANAF** - Dedicated section for ANAF news.
+    - **P2: Optimizare Mobilă** - Mobile responsiveness improvements.
+    
     Future Tasks:
-    - **P3: Refactoring :** Extract the 2400+ lines of API routes into a structured  directory.
-    - **P3: Bridge Auto-Start:** Create a unified script to start the Python bridge on Windows startup.
-    - **P4: Verifone V200c Integration:** Blocked on user obtaining ECR documentation.
-    - **P4: Import NIR din Excel:** Dedicated flow for mapping Excel columns to NIR imports.
-    - **P4: Istoric Prețuri pe Furnizor / Comparator de prețuri:** UI to view price evolution per product.
+    - **P3: Integrare Verifone V200c (ECR)** - **BLOCKED**. Waiting for user to get Admin Password from Raiffeisen/Printec to enable ECR Ethernet mode on the POS and provide the IP/Port. (The agent already extracted and analyzed the  C++ library).
+    - **P3: Refactoring server.py** - Extract 2500+ lines into .
+    - **P3: Bridge Auto-Start** - Windows auto-start script.
+    - **P4: Import NIR din Excel** & **Istoric Prețuri pe Furnizor**.
 
 **Completed work in this session**
-- Fixed Bridge target URLs in  and  to point to the production domain. (DONE)
-- Fixed ANAF CUI Search by migrating from blocked v8 endpoint to v9 (). (DONE)
-- Added  dependency to support legacy  product imports. (DONE)
-- Updated NIR matching logic to exact word-by-word match. (DONE)
-- Added Șterge Toate Produsele backend route and frontend warning modal. (DONE)
-- Made starting balance optional in the Deschidere Zi interface. (DONE)
-- Removed hardcoded demo credentials from the . (DONE)
-- Added Bulk TVA change functionality (e.g., change 21% to 25% for all products at once). (DONE)
-- Updated held orders () to expire after 12 hours instead of 24 hours. (DONE)
+- **Optimized XLS Imports**: Added pagination to the frontend preview dialog (100 items/page) to prevent browser freezing with 6000+ rows. (DONE)
+- **Backend Import Performance**: Replaced individual MongoDB saves with  grouped in batches of 500. Reduced import time from timing out to ~8 seconds for 6000 items. Allowed products with a price of . (DONE)
+- **Nginx Configuration**: Guided user to increase  to  on the live VPS to allow large spreadsheet uploads. (DONE)
+- **Fixed Double Receipt Bug**: Fixed a logic error where printing a receipt *with a CUI* triggered a second normal receipt. Added  flag to prevent duplicate hardware prints. (DONE)
+- **Fixed POS Shortcuts**: F7 (Card), F9 (Cash), and F11 (Clear Cart) were unresponsive due to a stale closure bug. Fixed using  for the cart state. (DONE)
 
 **Earlier issues found/mentioned but not fixed**
 None.
@@ -71,59 +72,51 @@ None.
 
 
 **Key Technical Concepts**
-- **VPS Deployment:** The app runs on a self-managed VPS. It relies on real-time fallback to ANAF v9 since the VPS does not have the massive 3.7 million ONRC local DB cache that the preview environment has.
-- **Hardware Bridge:** A local Python script () that runs on the user's Windows PC, polling the cloud server for fiscal commands and interfacing with the INCOTEX Succes M7.
+- **VPS Deployment:** App runs on a self-managed VPS. 
+- **Hardware Bridge:** A local Python script () runs on the user's Windows PC.
+- **Verifone ECR Integration (Planned):** Will rely on Python  to call the Windows  provided by the bank over a local LAN TCP socket.
 
 **key DB schema**
   - **products**: , , , , , , , , .
   - **held_orders**: uid=0(root) gid=0(root) groups=0(root), , , , .
-  - **companies_cache**: Cache for CUI lookups.
 
 **changes in tech stack**
-  - Added  to backend  to support  file parsing alongside .
+  - None new this session, but the VPS now expects the  python dependency installed previously.
 
 **All files of reference** 
-- : Updated with ANAF v9, bulk routes, 12h expiry, and exact NIR matching.
-- : Updated ANAF v9 URL.
-- : Updated with Bulk TVA and Delete All UI.
-- : Updated to make starting balance optional.
-- : Removed demo credential text.
+- : Updated with paginated XLS preview.
+- : Updated with  fixes for keyboard shortcuts and  logic.
+- : Updated CSV/XLS import  endpoint to use MongoDB bulk operations.
+- : Thoroughly updated with the new P1/P2/P3 task backlog.
 
 **Areas that need refactoring**: 
--  is nearly 2500 lines long. Extracting API routes into a  folder is a P3 priority for maintainability.
+-  is too large and needs routes extracted (Scheduled as a P3 task).
 
 **key api endpoints**
-- : Uses ANAF v9 for company lookup.
-- : Clears the product catalog.
-- : Bulk updates the TVA percentage for all products.
-- : Now accepts , , and .
+- : Now processes arrays in bulk.
 
 **Critical Info for New Agent**
 - **Language Requirement:** The user communicates strictly in Romanian. You must reply in Romanian.
-- **Dependency Alert:** The agent added  to  this session. You **must** remind the user to run  on their VPS SSH terminal during their next update, as their custom  script does not auto-install new Python dependencies.
-- **ANAF API:** Do NOT use ANAF v8. It actively blocks datacenter IPs. The current implementation uses ANAF v9 (), which was tested and works perfectly from the VPS.
+- **Live Production App:** The user is currently operating this application in a live store environment. Any bugs introduced into the POS or hardware printing flow cost them actual money. Test thoroughly before asking them to update their VPS.
+- **Start with P1 Quick Fixes:** The first things you should tackle are the 3 quick fixes explicitly listed under P1 (21% TVA default, Save button in Start Day, Persistent POS Cart). 
+- **Verifone ECR is BLOCKED:** Do not ask the user to test the Verifone integration. They are waiting for the bank to provide an Admin password to unlock the settings on the terminal.
+- **DO NOT hallucinate receipt printing:** For the Copy Receipt task, the user emphasized it must be a specific *copy* command to the INCOTEX hardware, NOT re-printing a standard fiscal receipt, as that messes up their accounting.
 
 **documents and test reports created in this job** 
   - 
-  - 
-  - 
 
 **Last 10 User Messages and any pending HUMAN messages** 
- - User requested  export compatibility to import legacy products. (DONE)
- - User asked to change NIR matching to exact word-by-word. (DONE)
- - User requested a Delete all products button with a warning. (DONE)
- - User requested starting balance to be optional on the Start Day page. (DONE)
- - User requested a change calculator for the POS and cash drawer opening logic. (PENDING - P1)
- - User requested removing demo credentials from the login screen. (DONE)
- - User requested a section for ANAF updates. (PENDING - P2)
- - User requested bulk TVA update for all products (e.g., 21% to 25%). (DONE)
- - User requested mobile optimization. (PENDING - P2)
- - User requested Z Report explanation and viewing capabilities (without forced printing). (PENDING - P2)
- - User requested held orders to expire in 12 hours instead of 24. (DONE)
- - *No pending human actions.*
+ - User asked for CMD commands to find the Verifone POS IP/Port.
+ - User provided ping logs from their local network.
+ - User tried  on the identified IPs but all connections failed.
+ - User asked if a direct wire to the PC is needed (Agent clarified it uses the LAN router).
+ - User uploaded photos showing the Verifone POS menu asks for an Admin Password.
+ - User asked what message to send to the bank.
+ - User told the agent to stop working, update the list, and close the session so they could fork the chat.
+ - *Pending*: The agent should start by reading  and addressing the P1 quick fixes.
 
 **Project Health Check:**
-- Broken: Electron  (User paused debugging).
+- Broken: Electron  (User paused debugging). Verifone ECR integration (Blocked on bank config).
 - Mocked: None.
 
 **3rd Party Integrations** 
@@ -131,7 +124,7 @@ None.
 - ANAF v9 API (Public CUI Lookup) - NO User Key Required.
 
 **Testing status**
-  - Testing agent used after significant changes: YES (Iteration 11 tested all new bulk operations, login UI, and held orders logic).
+  - Testing agent used after significant changes: NO (Agent self-tested via Playwright screenshots and bash profiling).
   - Troubleshoot agent used after agent stuck in loop: NO.
   - Test files created: None.
   - Known regressions: None.
@@ -141,4 +134,4 @@ None.
 - Casier:  / 
 
 **What agent forgot to execute**
-- Nothing from the agreed scope was missed. The remaining items from the user's prompt (Cash calculator, ANAF updates UI, Z-report UI, mobile optimizations) were correctly categorized into the backlog/upcoming tasks as agreed with the user.</analysis>
+- The agent intentionally reverted their work-in-progress on the P1 tasks (TVA 21% and Start Day save button) to ensure a clean codebase state for this fork, per the user's explicit request. Nothing was forgotten.</analysis>

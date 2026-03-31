@@ -38,7 +38,7 @@ const emptyProduct = {
   cod_bare: '',
   pret_achizitie: '',
   pret_vanzare: '',
-  tva: '19',
+  tva: '21',
   unitate: 'buc',
   stoc: '',
   stoc_minim: '5',

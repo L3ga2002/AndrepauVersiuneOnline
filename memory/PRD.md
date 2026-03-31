@@ -27,38 +27,52 @@ Aplicatie completa de gestiune magazin si POS (Point of Sale) pentru magazinul d
 9. Furnizori - CRUD complet
 10. Cautare CUI (ANAF)
 11. NIR (Nota Intrare Receptie) - Manual + Import PDF
-12. Comenzi in Asteptare cu Rezervare Stoc
+12. Comenzi in Asteptare cu Rezervare Stoc (12h expirare)
 13. Mod Offline Baza
-14. Shortcut-uri F-key
+14. Shortcut-uri F-key (F7=Card, F9=Numerar, F11=Anulare) - FIXED stale closure
 15. Prevenire Vanzari Duplicate
 16. Alerte Stoc Minim
 17. Dashboard Deschidere Zi
-18. **Import NIR din PDF** - PyMuPDF blocks, creare automata produse noi, detectare furnizor
-19. **Import CSV Produse** - Preview, template, Nou/Actualizare
-20. **Post-NIR Coduri de Bare** - Dialog scanare coduri dupa orice NIR
-21. **Cautare cu Filtru Pret Separat** - Camp denumire (stanga) + Camp pret optional (dreapta)
-22. **Cautare Fuzzy Multi-cuvant** - Orice cuvant din orice pozitie
-23. **3 Facturi PDF Test** - DEDEMAN, HORNBACH, LEROY MERLIN
-24. **Cautare CUI via Bridge Local** - Fallback ANAF prin bridge
-25. **Bridge URL actualizat** - start_bridge.bat + actualizeaza_bridge.bat → andrepau.com
-26. **ANAF v9 Endpoint** - Cautare CUI functioneaza de pe VPS/server
-27. **Import NIR - Potrivire Exacta** - Doar cuvant cu cuvant
-28. **Buton Sterge Toate Produsele** - Cu dublu warning
-29. **Deschidere Zi - Sold Manual Optional**
-30. **TVA Bulk Update** - Schimbare cota TVA la toate produsele
-31. **Comenzi in Asteptare 12h** - Expira la 12 ore
-32. **Login fara Demo** - Conturile demo nu mai sunt afisate
-33. **Import .xls (Excel vechi)** - Suport format .xls via xlrd
-34. **Import XLS Optimizat** - Paginare dialog (100/pag), bulk_write MongoDB, import in loturi 500, pret 0 permis
+18. Import NIR din PDF - PyMuPDF blocks, creare automata produse noi
+19. Import CSV/XLS Produse - Preview paginat (100/pag), bulk write, import in loturi 500
+20. Post-NIR Coduri de Bare
+21. Cautare cu Filtru Pret Separat
+22. Cautare Fuzzy Multi-cuvant
+23. Cautare CUI via Bridge Local (fallback ANAF)
+24. ANAF v9 Endpoint
+25. Import NIR - Potrivire Exacta
+26. Buton Sterge Toate Produsele (cu dublu warning)
+27. Deschidere Zi - Sold Manual Optional
+28. TVA Bulk Update
+29. Login fara Demo credentials
+30. Fix bon dublu la factura CUI (skipFiscal=true)
 
-## Taskuri Viitoare
-- P1: Calculator rest + configurare sertar (cash calculator)
-- P2: Raport Z (End of Day) - DOAR dashboard vizualizare
-- P2: Sectiune Update-uri ANAF
-- P2: Optimizare mobila (responsive)
-- P3: Refactoring server.py (separare rute)
-- P3: Bridge Auto-Start
-- P4: Verifone V200c (blocat pe documentatie)
-- P4: Import NIR din Excel
-- P4: Istoric Preturi / Comparator preturi pe furnizor
-- Electron (PAUZA)
+## Taskuri de facut
+
+### P1 - Urgente / Bug-uri
+- [ ] **TVA implicit 21%** la adaugare produs manual (nu 19%) - FIX RAPID
+- [ ] **Sold Deschidere Zi nu se salveaza** - buton Enter/Salveaza lipsa
+- [ ] **Cosul POS se goleste** cand navighezi la Produse/alta pagina - persistenta cos
+
+### P1 - Functionalitati cerute
+- [ ] **Calculator Rest + Deschidere Sertar** - Modal in POS: suma primita → rest de dat + comanda hardware sertar
+- [ ] **Detalii bon** - click pe bon in istoric → vezi produsele
+- [ ] **Copiere/Reprint bon** - doar daca INCOTEX suporta functia COPIE (nu bon fiscal nou!)
+- [ ] **Light Mode** - tema cu fundal deschis (nu doar dark mode)
+- [ ] **Sold casa la Operatiuni Casa** - nu doar la Deschidere Zi
+- [ ] **Suma card la Deschidere Zi** - total bonuri card printate cu succes
+
+### P2 - Planificate
+- [ ] Raport Z Dashboard (DOAR vizualizare, fara comenzi fiscale)
+- [ ] Sectiune Update-uri ANAF
+- [ ] Optimizare Mobila (responsive)
+
+### P3 - Tehnice
+- [ ] Refactoring server.py (separare rute in fisiere)
+- [ ] Bridge Auto-Start pe Windows
+
+### P4 - Viitor
+- [ ] Integrare Verifone V200c ECR (BLOCAT - asteptam documentatie ECR de la Raiffeisen)
+- [ ] Import NIR din Excel dedicat
+- [ ] Istoric Preturi / Comparator preturi pe furnizor
+- [ ] Electron Desktop App (PAUZA)

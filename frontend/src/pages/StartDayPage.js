@@ -6,7 +6,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { formatCurrency } from '../lib/utils';
 import { 
   Banknote, Wifi, WifiOff, ShoppingCart, AlertTriangle, 
-  Package, Clock, CheckCircle, ArrowRight, RefreshCw, Loader2
+  Package, Clock, CheckCircle, ArrowRight, RefreshCw, Loader2, CreditCard
 } from 'lucide-react';
 
 export default function StartDayPage() {
@@ -17,6 +17,7 @@ export default function StartDayPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [soldManual, setSoldManual] = useState('');
   const [showSoldInput, setShowSoldInput] = useState(false);
+  const [savingSold, setSavingSold] = useState(false);
 
   const fetchSummary = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -36,17 +37,25 @@ export default function StartDayPage() {
   useEffect(() => { fetchSummary(); }, [fetchSummary]);
 
   const startDay = async () => {
-    // Save manual starting balance if provided
-    if (soldManual && parseFloat(soldManual) > 0) {
-      try {
-        await fetch(`${API_URL}/cash/operation`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ type: 'CASH_IN', amount: parseFloat(soldManual), description: 'Sold inceput de zi (manual)' })
-        });
-      } catch {}
-    }
     navigate('/pos');
+  };
+
+  const saveSoldManual = async () => {
+    if (!soldManual || parseFloat(soldManual) <= 0) return;
+    setSavingSold(true);
+    try {
+      const resp = await fetch(`${API_URL}/cash-operations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ type: 'CASH_IN', amount: parseFloat(soldManual), description: 'Sold inceput de zi (manual)', operator_id: user?.id, operator_name: user?.full_name })
+      });
+      if (resp.ok) {
+        setShowSoldInput(false);
+        setSoldManual('');
+        fetchSummary(true);
+      }
+    } catch {}
+    setSavingSold(false);
   };
 
   if (loading) {
@@ -121,11 +130,21 @@ export default function StartDayPage() {
                       min="0"
                       value={soldManual}
                       onChange={(e) => setSoldManual(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') saveSoldManual(); }}
                       placeholder="0.00 RON"
                       className="flex-1 h-10 px-3 rounded-md border border-border bg-background text-foreground text-sm"
                       data-testid="manual-balance-input"
                       autoFocus
                     />
+                    <Button
+                      onClick={saveSoldManual}
+                      disabled={!soldManual || parseFloat(soldManual) <= 0 || savingSold}
+                      className="h-10 px-4 bg-green-600 hover:bg-green-700 text-white"
+                      data-testid="save-balance-btn"
+                    >
+                      {savingSold ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-1" />}
+                      Salveaza
+                    </Button>
                     <button onClick={() => { setShowSoldInput(false); setSoldManual(''); }} className="text-sm text-muted-foreground hover:text-foreground">
                       Anuleaza
                     </button>
@@ -134,6 +153,28 @@ export default function StartDayPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Card Sales Summary */}
+          {(data?.vanzari_card > 0 || data?.numar_vanzari_card > 0) && (
+            <Card className="bg-card border-border col-span-2">
+              <CardContent className="p-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                    <CreditCard className="w-5 h-5 text-blue-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Vanzari Card (bonuri printate cu succes)</p>
+                    <p className="font-mono text-xl font-bold text-blue-400" data-testid="card-sales-total">
+                      {formatCurrency(data?.vanzari_card || 0)}
+                    </p>
+                  </div>
+                  <div className="ml-auto text-right">
+                    <p className="text-sm text-muted-foreground">{data?.numar_vanzari_card || 0} tranzactii</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Bridge Status */}
           <Card className={`border-border ${bridgeOk ? 'bg-card' : 'bg-red-500/5 border-red-500/30'}`}>

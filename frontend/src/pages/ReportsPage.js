@@ -7,7 +7,7 @@ import { ScrollArea } from '../components/ui/scroll-area';
 import { Button } from '../components/ui/button';
 import { formatCurrency, formatNumber, formatDate } from '../lib/utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
-import { TrendingUp, ShoppingCart, CreditCard, Banknote, Receipt, Download, Calendar } from 'lucide-react';
+import { TrendingUp, ShoppingCart, CreditCard, Banknote, Receipt, Download, Calendar, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 
 const COLORS = ['#f59e0b', '#3b82f6', '#22c55e', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
@@ -22,6 +22,7 @@ export default function ReportsPage() {
   const [dailySales, setDailySales] = useState([]);
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [expandedSale, setExpandedSale] = useState(null);
 
   const fetchReports = useCallback(async () => {
     setLoading(true);
@@ -325,23 +326,58 @@ export default function ReportsPage() {
                     </TableHeader>
                     <TableBody>
                       {sales.slice(0, 20).map(sale => (
-                        <TableRow key={sale.id} data-testid={`sale-row-${sale.id}`} className="border-border">
-                          <TableCell className="font-mono text-sm text-foreground">{sale.numar_bon}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {formatDate(sale.created_at)}
-                          </TableCell>
-                          <TableCell className="text-right font-mono font-bold text-primary">
-                            {formatCurrency(sale.total)}
-                          </TableCell>
-                          <TableCell>
-                            <span className={`text-xs uppercase font-medium ${
-                              sale.metoda_plata === 'numerar' ? 'text-green-500' :
-                              sale.metoda_plata === 'card' ? 'text-blue-500' : 'text-purple-500'
-                            }`}>
-                              {sale.metoda_plata}
-                            </span>
-                          </TableCell>
-                        </TableRow>
+                        <React.Fragment key={sale.id}>
+                          <TableRow 
+                            data-testid={`sale-row-${sale.id}`} 
+                            className="border-border cursor-pointer hover:bg-secondary/30 transition-colors"
+                            onClick={() => setExpandedSale(expandedSale === sale.id ? null : sale.id)}
+                          >
+                            <TableCell className="font-mono text-sm text-foreground">
+                              <div className="flex items-center gap-2">
+                                {expandedSale === sale.id ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+                                {sale.numar_bon}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {formatDate(sale.created_at)}
+                            </TableCell>
+                            <TableCell className="text-right font-mono font-bold text-primary">
+                              {formatCurrency(sale.total)}
+                            </TableCell>
+                            <TableCell>
+                              <span className={`text-xs uppercase font-medium ${
+                                sale.metoda_plata === 'numerar' ? 'text-green-500' :
+                                sale.metoda_plata === 'card' ? 'text-blue-500' : 'text-purple-500'
+                              }`}>
+                                {sale.metoda_plata}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                          {expandedSale === sale.id && (
+                            <TableRow className="border-border bg-secondary/20">
+                              <TableCell colSpan={4} className="p-0">
+                                <div className="px-8 py-3 space-y-1" data-testid={`sale-details-${sale.id}`}>
+                                  <p className="text-xs text-muted-foreground uppercase mb-2 font-semibold">
+                                    Produse pe bon ({sale.items?.length || 0} articole) | Casier: {sale.casier_nume}
+                                  </p>
+                                  {sale.items?.map((item, idx) => (
+                                    <div key={idx} className="flex items-center justify-between py-1 text-sm border-b border-border/50 last:border-0">
+                                      <span className="text-foreground flex-1">{item.nume}</span>
+                                      <span className="text-muted-foreground font-mono w-20 text-right">{item.cantitate} x</span>
+                                      <span className="text-foreground font-mono w-24 text-right">{formatCurrency(item.pret_unitar)}</span>
+                                      <span className="text-primary font-mono font-bold w-28 text-right">{formatCurrency(item.cantitate * item.pret_unitar)}</span>
+                                    </div>
+                                  ))}
+                                  <div className="flex justify-between pt-2 text-xs text-muted-foreground">
+                                    <span>TVA: {formatCurrency(sale.tva_total)}</span>
+                                    {sale.discount_percent > 0 && <span>Discount: {sale.discount_percent}%</span>}
+                                    {sale.fiscal_number && <span>Nr. fiscal: {sale.fiscal_number}</span>}
+                                  </div>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </React.Fragment>
                       ))}
                     </TableBody>
                   </Table>

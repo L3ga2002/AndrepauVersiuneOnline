@@ -16,7 +16,9 @@ import {
   AlertTriangle,
   Wrench,
   Calculator,
-  LayoutDashboard
+  LayoutDashboard,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -37,6 +39,18 @@ export default function Layout() {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [stockAlerts, setStockAlerts] = useState(0);
+  const [lightMode, setLightMode] = useState(() => {
+    return localStorage.getItem('andrepau_theme') === 'light';
+  });
+
+  useEffect(() => {
+    if (lightMode) {
+      document.documentElement.classList.add('light');
+    } else {
+      document.documentElement.classList.remove('light');
+    }
+    localStorage.setItem('andrepau_theme', lightMode ? 'light' : 'dark');
+  }, [lightMode]);
 
   useEffect(() => {
     const fetchAlerts = async () => {
@@ -128,6 +142,16 @@ export default function Layout() {
 
           {/* User info & Logout */}
           <div className="p-4 border-t border-border">
+            {/* Theme Toggle */}
+            <button
+              onClick={() => setLightMode(!lightMode)}
+              className="w-full flex items-center gap-3 px-3 py-2.5 mb-3 rounded-sm text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+              data-testid="theme-toggle-btn"
+            >
+              {lightMode ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+              <span>{lightMode ? 'Mod Inchis' : 'Mod Deschis'}</span>
+            </button>
+
             {stockAlerts > 0 && (
               <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-sm flex items-center gap-2 text-sm text-yellow-500">
                 <AlertTriangle className="w-4 h-4" />

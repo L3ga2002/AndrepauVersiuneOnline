@@ -12,7 +12,12 @@ export default function POSPage() {
   const { user, token, API_URL } = useAuth();
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [cart, setCart] = useState([]);
+  const [cart, setCart] = useState(() => {
+    try {
+      const saved = localStorage.getItem('andrepau_pos_cart');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [priceFilter, setPriceFilter] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
@@ -33,6 +38,11 @@ export default function POSPage() {
   // Discount modal
   const [showDiscount, setShowDiscount] = useState(false);
   const [discountInput, setDiscountInput] = useState('');
+
+  // Cash calculator modal
+  const [showCashCalc, setShowCashCalc] = useState(false);
+  const [cashReceived, setCashReceived] = useState('');
+  const [lastSaleTotal, setLastSaleTotal] = useState(0);
   
   // Hold/Pending orders (backend-managed with stock reservation)
   const [holdOrders, setHoldOrders] = useState([]);
@@ -61,6 +71,11 @@ export default function POSPage() {
   // Keep refs in sync
   useEffect(() => { cartRef.current = cart; }, [cart]);
   useEffect(() => { fiscalLoadingRef.current = fiscalLoading; }, [fiscalLoading]);
+
+  // Persist cart to localStorage
+  useEffect(() => {
+    localStorage.setItem('andrepau_pos_cart', JSON.stringify(cart));
+  }, [cart]);
 
   // Check bridge connection via cloud
   const checkBridge = useCallback(async () => {
@@ -517,13 +532,19 @@ export default function POSPage() {
   const handlePayment = async (method) => {
     if (cart.length === 0) return;
 
+    // For cash payments, show calculator modal first
+    if (method === 'numerar') {
+      setLastSaleTotal(total);
+      setCashReceived('');
+      setShowCashCalc(true);
+      return;
+    }
+
     let sumaCash = 0;
     let sumaCard = 0;
     let sumaTichete = 0;
 
-    if (method === 'numerar') {
-      sumaCash = total;
-    } else if (method === 'card') {
+    if (method === 'card') {
       sumaCard = total;
     } else if (method === 'tichete') {
       sumaTichete = total;
@@ -531,7 +552,7 @@ export default function POSPage() {
       sumaCash = parseFloat(cashAmount) || 0;
       sumaCard = parseFloat(cardAmount) || 0;
       if (sumaCash + sumaCard < total) {
-        toast.error('Suma totală este insuficientă');
+        toast.error('Suma totala este insuficienta');
         return;
       }
     }
@@ -546,6 +567,16 @@ export default function POSPage() {
     await processSaleWithFiscal(method, sumaCash, sumaCard, sumaTichete);
   };
   handlePaymentRef.current = handlePayment;
+
+  const confirmCashPayment = async () => {
+    setShowCashCalc(false);
+    if (!bridgeConnected) {
+      setPendingPaymentMethod('numerar');
+      setShowNoBridgeConfirm(true);
+      return;
+    }
+    await processSaleWithFiscal('numerar', total, 0, 0);
+  };
 
   const processSaleWithFiscal = async (method, sumaCash, sumaCard, sumaTichete, skipFiscal = false) => {
     setFiscalLoading(true);
@@ -1572,6 +1603,83 @@ export default function POSPage() {
               data-testid="continue-without-fiscal-btn"
             >
               Continua fara bon fiscal
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cash Calculator Modal */}
+      <Dialog open={showCashCalc} onOpenChange={setShowCashCalc}>
+        <DialogContent className="bg-card border-border max-w-sm" data-testid="cash-calculator-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-green-500">
+              <Banknote className="w-5 h-5" />
+              Plata Numerar
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="p-4 bg-secondary/50 rounded-lg border border-border text-center">
+              <p className="text-sm text-muted-foreground">Total de plata:</p>
+              <p className="text-3xl font-bold text-primary">{formatCurrency(lastSaleTotal)}</p>
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground">Suma primita (RON)</label>
+              <Input
+                type="number"
+                step="0.01"
+                value={cashReceived}
+                onChange={(e) => setCashReceived(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && (parseFloat(cashReceived) >= lastSaleTotal || !cashReceived)) confirmCashPayment(); }}
+                className="h-16 text-3xl font-mono text-center mt-1"
+                placeholder="0.00"
+                autoFocus
+                data-testid="cash-received-input"
+              />
+            </div>
+            {cashReceived && parseFloat(cashReceived) > 0 && (
+              <div className={`p-4 rounded-lg border text-center ${
+                parseFloat(cashReceived) >= lastSaleTotal 
+                  ? 'bg-green-500/10 border-green-500/30' 
+                  : 'bg-red-500/10 border-red-500/30'
+              }`}>
+                <p className="text-sm text-muted-foreground">
+                  {parseFloat(cashReceived) >= lastSaleTotal ? 'Rest de dat:' : 'Mai lipsesc:'}
+                </p>
+                <p className={`text-4xl font-bold font-mono ${
+                  parseFloat(cashReceived) >= lastSaleTotal ? 'text-green-500' : 'text-red-500'
+                }`} data-testid="change-amount">
+                  {formatCurrency(Math.abs(parseFloat(cashReceived) - lastSaleTotal))}
+                </p>
+              </div>
+            )}
+            {/* Quick amount buttons */}
+            <div className="grid grid-cols-4 gap-2">
+              {[1, 5, 10, 20, 50, 100, 200, 500].map(amt => (
+                <Button
+                  key={amt}
+                  variant="outline"
+                  className="h-10 text-sm font-mono"
+                  onClick={() => setCashReceived(prev => {
+                    const current = parseFloat(prev) || 0;
+                    return (current + amt).toString();
+                  })}
+                  data-testid={`quick-amount-${amt}`}
+                >
+                  +{amt}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowCashCalc(false)}>Anuleaza</Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700 h-12 text-lg"
+              onClick={confirmCashPayment}
+              disabled={fiscalLoading}
+              data-testid="confirm-cash-payment-btn"
+            >
+              {fiscalLoading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Banknote className="w-5 h-5 mr-2" />}
+              Incaseaza
             </Button>
           </DialogFooter>
         </DialogContent>

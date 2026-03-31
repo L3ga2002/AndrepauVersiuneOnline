@@ -1,12 +1,13 @@
 # ANDREPAU POS - Product Requirements Document
 
 ## Descriere Proiect
-Aplicatie completa de gestiune magazin si POS (Point of Sale) pentru magazinul de materiale de constructii **ANDREPAU**. Aplicatie in limba romana, optimizata pentru Windows desktop si tablete.
+Aplicatie completa de gestiune magazin si POS (Point of Sale) pentru magazinul de materiale de constructii **ANDREPAU**. Aplicatie in limba romana, optimizata pentru Windows desktop si tablete. APLICATIE LIVE IN PRODUCTIE.
 
 ## Arhitectura
 - **Frontend**: React + Tailwind CSS + Shadcn UI (PWA)
 - **Backend**: FastAPI + Python + MongoDB
 - **Bridge Fiscal Local**: Python script (v3.2 PRODUCTIE)
+- **VPS**: Hostinger Ubuntu 24.04, deploy via /opt/update.sh
 - **Desktop (Electron)**: PAUZA
 
 ## Credentiale
@@ -25,27 +26,27 @@ Aplicatie completa de gestiune magazin si POS (Point of Sale) pentru magazinul d
 7. Stoc & Inventar - Dashboard, export Excel
 8. Rapoarte - Vanzari pe zi/luna, top produse, profit
 9. Furnizori - CRUD complet
-10. Cautare CUI (ANAF)
+10. Cautare CUI (ANAF v9)
 11. NIR (Nota Intrare Receptie) - Manual + Import PDF
 12. Comenzi in Asteptare cu Rezervare Stoc (12h expirare)
 13. Mod Offline Baza
-14. Shortcut-uri F-key (F7=Card, F9=Numerar, F11=Anulare) - FIXED stale closure
+14. Shortcut-uri F-key (F7=Card, F9=Numerar, F11=Anulare) - FIXED stale closure cu refs
 15. Prevenire Vanzari Duplicate
 16. Alerte Stoc Minim
 17. Dashboard Deschidere Zi
 18. Import NIR din PDF - PyMuPDF blocks, creare automata produse noi
-19. Import CSV/XLS Produse - Preview paginat (100/pag), bulk write, import in loturi 500
+19. Import CSV/XLS Produse - Preview paginat (100/pag), bulk write MongoDB, import in loturi 500, pret 0 permis
 20. Post-NIR Coduri de Bare
 21. Cautare cu Filtru Pret Separat
 22. Cautare Fuzzy Multi-cuvant
 23. Cautare CUI via Bridge Local (fallback ANAF)
-24. ANAF v9 Endpoint
-25. Import NIR - Potrivire Exacta
-26. Buton Sterge Toate Produsele (cu dublu warning)
-27. Deschidere Zi - Sold Manual Optional
-28. TVA Bulk Update
-29. Login fara Demo credentials
-30. Fix bon dublu la factura CUI (skipFiscal=true)
+24. Import NIR - Potrivire Exacta
+25. Buton Sterge Toate Produsele (cu dublu warning)
+26. Deschidere Zi - Sold Manual Optional
+27. TVA Bulk Update
+28. Login fara Demo credentials
+29. Fix bon dublu la factura CUI (skipFiscal=true)
+30. NGINX client_max_body_size 20M pe VPS
 
 ## Taskuri de facut
 
@@ -72,7 +73,14 @@ Aplicatie completa de gestiune magazin si POS (Point of Sale) pentru magazinul d
 - [ ] Bridge Auto-Start pe Windows
 
 ### P4 - Viitor
-- [ ] Integrare Verifone V200c ECR (BLOCAT - asteptam documentatie ECR de la Raiffeisen)
+- [ ] **Integrare Verifone V200c ECR** - BLOCAT pe parola admin de la Raiffeisen/Printec (IP + port ECR necesare). DLL disponibil: ecr_to_pos_v3_RZB.dll, parola arhiva: ecrdevelopmentsuite2020. Comunicare prin Ethernet, functii: Sale(suma), WaitForResponse(), GetLastErrorCode(). Suma in bani (2500=25.00 RON).
 - [ ] Import NIR din Excel dedicat
 - [ ] Istoric Preturi / Comparator preturi pe furnizor
 - [ ] Electron Desktop App (PAUZA)
+
+## Note VPS
+- Update: `bash /opt/update.sh`
+- Backend venv: `/opt/andrepau/backend/venv/`
+- Install deps: `/opt/andrepau/backend/venv/bin/pip install <pachet>`
+- NGINX config: `/etc/nginx/sites-available/andrepau` (client_max_body_size 20M)
+- Restart backend: `systemctl restart andrepau-backend`

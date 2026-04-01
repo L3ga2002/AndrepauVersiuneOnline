@@ -53,8 +53,15 @@ async def receive_synced_sales(data: dict):
                 duplicates += 1
                 continue
 
-        # Curata si stocheaza vanzarea
+        # Curata si stocheaza vanzarea cu valori default
         sale.pop("_id", None)
+        sale.setdefault("subtotal", sale.get("total", 0))
+        sale.setdefault("tva_total", 0)
+        sale.setdefault("discount_percent", 0)
+        sale.setdefault("suma_numerar", sale.get("total", 0) if sale.get("metoda_plata") == "numerar" else 0)
+        sale.setdefault("suma_card", sale.get("total", 0) if sale.get("metoda_plata") == "card" else 0)
+        sale.setdefault("items", [])
+        sale.setdefault("metoda_plata", "numerar")
         sale["synced"] = True
         sale["synced_from"] = "local"
         sale["synced_at"] = datetime.now(timezone.utc).isoformat()

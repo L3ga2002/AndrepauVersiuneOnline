@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import List, Optional
 import uuid
 from datetime import datetime, timezone
+import os
 import logging
 
 from database import db
@@ -10,6 +11,8 @@ from models import SaleCreate, SaleResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+IS_LOCAL = os.environ.get("LOCAL_MODE", "").lower() == "true"
 
 
 async def generate_bon_number():
@@ -37,7 +40,8 @@ async def create_sale(sale: SaleCreate, user: dict = Depends(get_current_user)):
         **sale.model_dump(),
         "transaction_id": sale.transaction_id or str(uuid.uuid4()),
         "casier_nume": casier_nume,
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "synced": not IS_LOCAL
     }
 
     stock_changes = []

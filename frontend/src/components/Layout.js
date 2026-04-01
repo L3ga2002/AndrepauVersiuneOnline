@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/button';
@@ -20,9 +20,13 @@ import {
   Sun,
   Moon,
   Wifi,
-  Monitor
+  Monitor,
+  RefreshCw,
+  CloudUpload,
+  Loader2
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { toast } from 'sonner';
 
 const isLocalMode = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
@@ -46,6 +50,11 @@ export default function Layout() {
   const [lightMode, setLightMode] = useState(() => {
     return localStorage.getItem('andrepau_theme') === 'light';
   });
+
+  // Sync state (only relevant in local mode)
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const [vpsReachable, setVpsReachable] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     if (lightMode) {
@@ -72,9 +81,103 @@ export default function Layout() {
     };
 
     fetchAlerts();
-    const interval = setInterval(fetchAlerts, 60000); // Check every minute
+    const interval = setInterval(fetchAlerts, 60000);
     return () => clearInterval(interval);
   }, [API_URL, token]);
+
+  // Local mode: check pending sync count + VPS reachability
+  const checkSyncStatus = useCallback(async () => {
+    if (!isLocalMode || !token) return;
+
+    // Check pending sales count
+    try {
+      const resp = await fetch(`${API_URL}/sync/pending-count`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        setPendingSyncCount(data.pending || 0);
+      }
+    } catch {
+      // Local backend not reachable
+    }
+
+    // Check VPS reachability
+    const vpsUrl = localStorage.getItem('andrepau_vps_url');
+    if (vpsUrl) {
+      try {
+        const ctrl = new AbortController();
+        const timeout = setTimeout(() => ctrl.abort(), 5000);
+        const resp = await fetch(`${vpsUrl}/api/sync/health`, { signal: ctrl.signal });
+        clearTimeout(timeout);
+        setVpsReachable(resp.ok);
+      } catch {
+        setVpsReachable(false);
+      }
+    }
+  }, [API_URL, token]);
+
+  useEffect(() => {
+    if (!isLocalMode) return;
+    checkSyncStatus();
+    const interval = setInterval(checkSyncStatus, 30000);
+    return () => clearInterval(interval);
+  }, [checkSyncStatus]);
+
+  // Sync handler
+  const handleSync = async () => {
+    const vpsUrl = localStorage.getItem('andrepau_vps_url');
+    if (!vpsUrl) {
+      toast.error('Configurati URL-ul VPS in Setari > Sincronizare');
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      // 1. Get pending sales from local
+      const pendingResp = await fetch(`${API_URL}/sync/pending-sales`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!pendingResp.ok) throw new Error('Nu pot citi vanzarile locale');
+      const { sales } = await pendingResp.json();
+
+      if (!sales || sales.length === 0) {
+        toast.info('Nu exista vanzari de sincronizat');
+        setSyncing(false);
+        return;
+      }
+
+      // 2. Send to VPS
+      const syncSecret = localStorage.getItem('andrepau_sync_secret') || 'andrepau-sync-2026';
+      const syncResp = await fetch(`${vpsUrl}/api/sync/receive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sync_secret: syncSecret, sales })
+      });
+
+      if (!syncResp.ok) throw new Error('VPS a refuzat sincronizarea');
+      const syncResult = await syncResp.json();
+
+      // 3. Mark as synced locally
+      const saleIds = sales.map(s => s.id);
+      await fetch(`${API_URL}/sync/mark-done`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ sale_ids: saleIds })
+      });
+
+      toast.success(`Sincronizare completa! ${syncResult.received} vanzari trimise la VPS`);
+      setPendingSyncCount(0);
+      checkSyncStatus();
+    } catch (err) {
+      toast.error(`Eroare sincronizare: ${err.message}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -130,6 +233,32 @@ export default function Layout() {
             {isLocalMode ? <Monitor className="w-3.5 h-3.5" /> : <Wifi className="w-3.5 h-3.5" />}
             <span>{isLocalMode ? 'MOD LOCAL (Offline)' : 'ONLINE (VPS)'}</span>
           </div>
+
+          {/* Sync banner - only in local mode with pending sales */}
+          {isLocalMode && pendingSyncCount > 0 && (
+            <div className="mx-3 mt-2 px-3 py-2 rounded-sm bg-amber-500/10 border border-amber-500/20" data-testid="sync-banner">
+              <div className="flex items-center gap-2 text-xs text-amber-400 font-medium">
+                <CloudUpload className="w-3.5 h-3.5" />
+                <span>{pendingSyncCount} vanzari nesincronizate</span>
+              </div>
+              {vpsReachable ? (
+                <button
+                  onClick={handleSync}
+                  disabled={syncing}
+                  data-testid="sync-now-btn"
+                  className="mt-1.5 w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-sm bg-amber-500 text-black text-xs font-bold hover:bg-amber-400 transition-colors disabled:opacity-50"
+                >
+                  {syncing ? (
+                    <><Loader2 className="w-3 h-3 animate-spin" /> Sincronizare...</>
+                  ) : (
+                    <><RefreshCw className="w-3 h-3" /> Sincronizeaza acum</>
+                  )}
+                </button>
+              ) : (
+                <p className="mt-1 text-[10px] text-amber-500/60">Asteptare internet pentru sincronizare...</p>
+              )}
+            </div>
+          )}
 
           {/* Navigation */}
           <ScrollArea className="flex-1 py-4">

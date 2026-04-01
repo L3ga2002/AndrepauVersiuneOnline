@@ -34,6 +34,7 @@ from routes.held_orders import router as held_orders_router
 from routes.exports import router as exports_router
 from routes.anaf import router as anaf_router
 from routes.seed import router as seed_router
+from routes.sync import router as sync_router
 
 # Include all routers
 api_router.include_router(auth_router)
@@ -48,6 +49,7 @@ api_router.include_router(held_orders_router)
 api_router.include_router(exports_router)
 api_router.include_router(anaf_router)
 api_router.include_router(seed_router)
+api_router.include_router(sync_router)
 
 
 @api_router.get("/")

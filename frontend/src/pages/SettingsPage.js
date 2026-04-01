@@ -9,8 +9,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { formatDate } from '../lib/utils';
-import { Users, UserPlus, Trash2, Shield, Download, Database, Settings as SettingsIcon, FileSpreadsheet } from 'lucide-react';
+import { Users, UserPlus, Trash2, Shield, Download, Database, Settings as SettingsIcon, FileSpreadsheet, Monitor, RefreshCw, Wifi, CloudUpload } from 'lucide-react';
 import { toast } from 'sonner';
+
+const isLocalMode = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
 export default function SettingsPage() {
   const { token, API_URL, isAdmin, user } = useAuth();
@@ -21,6 +23,11 @@ export default function SettingsPage() {
   const [showUserDialog, setShowUserDialog] = useState(false);
   const [userForm, setUserForm] = useState({ username: '', password: '', full_name: '', role: 'casier' });
   const [saving, setSaving] = useState(false);
+
+  // Sync config (local mode)
+  const [vpsUrl, setVpsUrl] = useState(() => localStorage.getItem('andrepau_vps_url') || '');
+  const [syncSecret, setSyncSecret] = useState(() => localStorage.getItem('andrepau_sync_secret') || 'andrepau-sync-2026');
+  const [pendingSync, setPendingSync] = useState(0);
 
   const fetchUsers = useCallback(async () => {
     if (!isAdmin) return;
@@ -41,6 +48,23 @@ export default function SettingsPage() {
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
+
+  // Fetch pending sync count
+  useEffect(() => {
+    if (!isLocalMode || !isAdmin) return;
+    const fetchPending = async () => {
+      try {
+        const resp = await fetch(`${API_URL}/sync/pending-count`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          setPendingSync(data.pending || 0);
+        }
+      } catch {}
+    };
+    fetchPending();
+  }, [API_URL, token, isAdmin]);
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
@@ -141,6 +165,33 @@ export default function SettingsPage() {
     }
   };
 
+  const handleDownloadLocalKit = async () => {
+    try {
+      toast.info('Se pregateste kit-ul de instalare locala...');
+      const response = await fetch(`${API_URL}/bridge/download`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const blob = await response.blob();
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'ANDREPAU_Instalare_Locala.zip';
+        link.click();
+        toast.success('Kit descarcat! Dezarhivati pe PC-ul din magazin.');
+      } else {
+        toast.error('Eroare la descarcare');
+      }
+    } catch (error) {
+      toast.error('Eroare la descarcare');
+    }
+  };
+
+  const handleSaveSyncConfig = () => {
+    localStorage.setItem('andrepau_vps_url', vpsUrl.replace(/\/$/, ''));
+    localStorage.setItem('andrepau_sync_secret', syncSecret);
+    toast.success('Configurare sincronizare salvata!');
+  };
+
   if (!isAdmin) {
     return (
       <div className="p-6" data-testid="settings-page">
@@ -177,6 +228,19 @@ export default function SettingsPage() {
             <Database className="w-4 h-4 mr-2" />
             Backup
           </TabsTrigger>
+          <TabsTrigger value="local" data-testid="tab-local" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <Monitor className="w-4 h-4 mr-2" />
+            Instalare Locala
+          </TabsTrigger>
+          {isLocalMode && (
+            <TabsTrigger value="sync" data-testid="tab-sync" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <CloudUpload className="w-4 h-4 mr-2" />
+              Sincronizare
+              {pendingSync > 0 && (
+                <span className="ml-1.5 px-1.5 py-0.5 text-[10px] bg-amber-500 text-black rounded-full font-bold">{pendingSync}</span>
+              )}
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* Users Tab */}
@@ -313,6 +377,132 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Local Install Tab */}
+        <TabsContent value="local">
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="font-heading text-xl uppercase text-foreground">
+                Instalare Aplicatie Locala (Offline)
+              </CardTitle>
+              <CardDescription className="text-muted-foreground">
+                Descarcati kit-ul pentru a rula aplicatia pe PC-ul din magazin fara internet
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="p-6 bg-secondary/30 rounded-sm">
+                <div className="flex items-start gap-4">
+                  <Monitor className="w-10 h-10 text-blue-400" />
+                  <div>
+                    <h4 className="font-medium text-foreground">Kit Instalare Locala</h4>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Contine scripturile necesare pentru a rula ANDREPAU POS pe PC-ul Windows din magazin.
+                      Include bridge fiscal, scripturi de pornire/oprire si ghid de instalare.
+                    </p>
+                    <Button
+                      data-testid="download-local-kit"
+                      onClick={handleDownloadLocalKit}
+                      className="mt-4 bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      <Download className="w-5 h-5 mr-2" />
+                      Descarca Kit Instalare (.zip)
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-sm space-y-2">
+                <p className="text-sm text-blue-400 font-medium">Pasi instalare pe PC:</p>
+                <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
+                  <li>Instalati: Python, Node.js, MongoDB, Git</li>
+                  <li>Clonati repo-ul din GitHub pe PC</li>
+                  <li>Rulati <code className="px-1 py-0.5 bg-secondary rounded text-foreground">install_andrepau.bat</code></li>
+                  <li>Porniti cu <code className="px-1 py-0.5 bg-secondary rounded text-foreground">start_andrepau.bat</code></li>
+                  <li>Deschideti in browser: <code className="px-1 py-0.5 bg-secondary rounded text-foreground">http://localhost:8001</code></li>
+                </ol>
+              </div>
+
+              <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-sm">
+                <p className="text-sm text-amber-400">
+                  <strong>Cum functioneaza:</strong> Cand internetul merge, folositi aplicatia normal de pe VPS.
+                  Cand pica internetul, deschideti <code className="px-1 py-0.5 bg-secondary rounded">http://localhost:8001</code> si faceti vanzari local.
+                  Cand revine internetul, vanzarile se sincronizeaza automat.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Sync Tab - only in local mode */}
+        {isLocalMode && (
+          <TabsContent value="sync">
+            <Card className="bg-card border-border">
+              <CardHeader>
+                <CardTitle className="font-heading text-xl uppercase text-foreground">
+                  Configurare Sincronizare
+                </CardTitle>
+                <CardDescription className="text-muted-foreground">
+                  Setati adresa VPS pentru sincronizarea vanzarilor locale
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-muted-foreground">Adresa VPS (URL)</Label>
+                    <Input
+                      data-testid="input-vps-url"
+                      value={vpsUrl}
+                      onChange={(e) => setVpsUrl(e.target.value)}
+                      placeholder="https://andrepau.com"
+                      className="h-12 mt-1 bg-background border-border text-foreground"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Adresa site-ului principal (ex: https://andrepau.com)</p>
+                  </div>
+
+                  <div>
+                    <Label className="text-muted-foreground">Cheie Sincronizare</Label>
+                    <Input
+                      data-testid="input-sync-secret"
+                      value={syncSecret}
+                      onChange={(e) => setSyncSecret(e.target.value)}
+                      className="h-12 mt-1 bg-background border-border text-foreground"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Trebuie sa fie aceeasi pe VPS si local</p>
+                  </div>
+
+                  <Button
+                    data-testid="save-sync-config"
+                    onClick={handleSaveSyncConfig}
+                    className="bg-primary text-primary-foreground"
+                  >
+                    Salveaza Configurare
+                  </Button>
+                </div>
+
+                {pendingSync > 0 && (
+                  <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-sm">
+                    <div className="flex items-center gap-2 text-amber-400">
+                      <CloudUpload className="w-5 h-5" />
+                      <span className="font-medium">{pendingSync} vanzari nesincronizate</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Aceste vanzari au fost facute offline si trebuie trimise pe VPS.
+                    </p>
+                  </div>
+                )}
+
+                {pendingSync === 0 && (
+                  <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-sm">
+                    <div className="flex items-center gap-2 text-emerald-400">
+                      <Wifi className="w-5 h-5" />
+                      <span className="font-medium">Totul sincronizat!</span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Create User Dialog */}

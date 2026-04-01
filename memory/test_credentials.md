@@ -1,11 +1,9 @@
-# ANDREPAU POS - Test Credentials
+# Test Credentials - ANDREPAU POS
 
-## Admin Account
-- Username: `admin`
-- Password: `admin123`
-- Role: ADMIN
+## Application Login
+- **Admin**: username=`admin`, password=`admin123`
+- **Casier**: username=`casier`, password=`casier123`
 
-## Casier Account
-- Username: `casier`
-- Password: `casier123`
-- Role: CASIER
+## Database
+- MongoDB: `mongodb://localhost:27017`
+- DB Name: `test_database` (preview) / `andrepau` (local production)

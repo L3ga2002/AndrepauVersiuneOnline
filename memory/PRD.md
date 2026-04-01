@@ -94,13 +94,16 @@ Complete store management and POS application for "ANDREPAU" construction materi
 - **[NEW] Windows scripts: install, start, stop, update**
 - **[NEW] Bridge autostart in start_andrepau.bat**
 - **[NEW] Bridge download includes local_setup scripts**
+- **[NEW] Sync mechanism: offline sales → VPS (backend endpoints)**
+- **[NEW] Sync banner in sidebar (pending count + sync button)**
+- **[NEW] Settings: "Instalare Locala" tab with download kit**
+- **[NEW] Settings: "Sincronizare" tab (visible only in local mode)**
+- **[NEW] Auto VPS health check every 30s (in local mode)**
 
 ## Remaining P1
 - Copiere/Reprint bon (comanda COPIE INCOTEX hardware - NU bon fiscal nou)
 
-## P2 Tasks - Offline Mode Completion
-- **Sincronizare offline → VPS** (vanzarile locale se trimit la VPS cand revine internetul)
-- **Auto-detect internet loss** (frontend switches to local API automatically)
+## P2 Tasks
 - Raport Z Dashboard (doar vizualizare)
 - Sectiune Update-uri ANAF
 - Optimizare Mobila (responsive)

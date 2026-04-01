@@ -88,7 +88,7 @@ Complete store management and POS application for "ANDREPAU" construction materi
 
 ## Deployment
 - VPS: Hostinger Ubuntu 24.04
-- Preview: https://fiscal-bridge-1.preview.emergentagent.com
+- Preview: https://desktop-pos-manager.preview.emergentagent.com
 - Backend: FastAPI on port 8001
 - Frontend: React on port 3000
 - Database: MongoDB

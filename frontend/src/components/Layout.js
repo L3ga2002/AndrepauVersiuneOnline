@@ -18,9 +18,13 @@ import {
   Calculator,
   LayoutDashboard,
   Sun,
-  Moon
+  Moon,
+  Wifi,
+  Monitor
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+
+const isLocalMode = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
 const navigation = [
   { name: 'Deschidere Zi', href: '/start-day', icon: LayoutDashboard, roles: ['admin', 'casier'] },
@@ -114,6 +118,17 @@ export default function Layout() {
             >
               <X className="w-5 h-5" />
             </button>
+          </div>
+
+          {/* Connection mode indicator */}
+          <div className={cn(
+            "mx-3 mt-3 px-3 py-2 rounded-sm flex items-center gap-2 text-xs font-medium",
+            isLocalMode 
+              ? "bg-blue-500/10 border border-blue-500/20 text-blue-400" 
+              : "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400"
+          )} data-testid="connection-mode-indicator">
+            {isLocalMode ? <Monitor className="w-3.5 h-3.5" /> : <Wifi className="w-3.5 h-3.5" />}
+            <span>{isLocalMode ? 'MOD LOCAL (Offline)' : 'ONLINE (VPS)'}</span>
           </div>
 
           {/* Navigation */}

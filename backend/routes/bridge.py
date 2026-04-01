@@ -33,11 +33,17 @@ async def download_bridge_direct(token: str = None):
 def _create_bridge_zip():
     import zipfile
     bridge_dir = Path(__file__).parent.parent
+    root_dir = bridge_dir.parent
     files_to_zip = {
         "fiscal_bridge.py": bridge_dir / "fiscal_bridge.py",
         "install_bridge.bat": bridge_dir / "install_bridge.bat",
         "start_bridge.bat": bridge_dir / "start_bridge.bat",
         "ACTUALIZEAZA_BRIDGE.bat": bridge_dir / "actualizeaza_bridge.bat",
+        "local_setup/install_andrepau.bat": root_dir / "local_setup" / "install_andrepau.bat",
+        "local_setup/start_andrepau.bat": root_dir / "local_setup" / "start_andrepau.bat",
+        "local_setup/stop_andrepau.bat": root_dir / "local_setup" / "stop_andrepau.bat",
+        "local_setup/update_local.bat": root_dir / "local_setup" / "update_local.bat",
+        "local_setup/README_INSTALARE.txt": root_dir / "local_setup" / "README_INSTALARE.txt",
     }
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:

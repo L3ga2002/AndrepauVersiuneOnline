@@ -3,7 +3,15 @@ import axios from 'axios';
 
 const AuthContext = createContext(null);
 
-const API_URL = process.env.REACT_APP_BACKEND_URL + '/api';
+// Dynamic API URL: localhost → local backend, otherwise → VPS
+const getApiUrl = () => {
+  const h = window.location.hostname;
+  if (h === 'localhost' || h === '127.0.0.1') {
+    return 'http://localhost:8001/api';
+  }
+  return process.env.REACT_APP_BACKEND_URL + '/api';
+};
+const API_URL = getApiUrl();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);

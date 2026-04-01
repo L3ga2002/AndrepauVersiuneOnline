@@ -1,5 +1,8 @@
 from fastapi import FastAPI, APIRouter
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from starlette.middleware.cors import CORSMiddleware
+from pathlib import Path
 import os
 import logging
 
@@ -62,6 +65,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- LOCAL MODE: Serve React build if it exists ---
+_build_dir = Path(__file__).parent.parent / "frontend" / "build"
+if _build_dir.exists():
+    # Serve static assets (JS, CSS, images)
+    _static_dir = _build_dir / "static"
+    if _static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(_static_dir)), name="react_static")
+
+    @app.get("/{full_path:path}")
+    async def serve_react_app(full_path: str):
+        """Serve React SPA - catch-all for non-API routes (local mode only)"""
+        file_path = _build_dir / full_path
+        if full_path and file_path.exists() and file_path.is_file():
+            return FileResponse(str(file_path))
+        return FileResponse(str(_build_dir / "index.html"))
 
 
 @app.on_event("shutdown")

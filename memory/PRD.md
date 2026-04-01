@@ -93,6 +93,7 @@ Complete store management and POS application for "ANDREPAU" construction materi
 - Frontend: React on port 3000
 - Database: MongoDB
 - Nginx: client_max_body_size 20M
+- **Pași deploy: Save to Github → pe VPS: `/opt/update.sh`**
 
 ## Credentials
 - Admin: admin / admin123

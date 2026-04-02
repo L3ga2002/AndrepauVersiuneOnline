@@ -52,14 +52,16 @@ Complete store management and POS application for "ANDREPAU" construction materi
 ```
 
 ## Deployment
-- VPS: Hostinger Ubuntu 24.04
+- VPS: Hostinger Ubuntu 24.04, path: `/opt/andrepau`, venv: `backend/venv`, service: `systemctl restart andrepau-backend`
+- Repo: `https://github.com/L3ga2002/AndrepauVersiuneOnline.git`
 - Preview: https://desktop-pos-manager.preview.emergentagent.com
 - Backend: FastAPI on port 8001
 - Frontend: React on port 3000
 - Database: MongoDB
 - Nginx: client_max_body_size 20M
-- **Pasi deploy VPS: Save to Github → pe VPS: `/opt/update.sh`**
+- **Pasi deploy VPS: Save to Github -> pe VPS: `/opt/update.sh`**
 - **Pasi deploy LOCAL: `local_setup/update_local.bat`**
+- **update.sh trebuie sa aiba: git stash + source backend/venv/bin/activate**
 
 ## How Online/Offline Works
 - **Online (VPS)**: Browser → VPS URL → everything normal

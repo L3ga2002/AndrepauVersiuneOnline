@@ -103,3 +103,60 @@ async def mark_synced(data: dict, user: dict = Depends(get_current_user)):
 async def sync_health():
     """Endpoint simplu pentru verificare conectivitate (folosit de frontend)"""
     return {"ok": True, "timestamp": datetime.now(timezone.utc).isoformat()}
+
+
+# =============================================
+#  SINCRONIZARE PRODUSE (VPS <-> Local)
+# =============================================
+
+@router.get("/sync/products")
+async def get_all_products_for_sync(data: dict = None):
+    """Returneaza toate produsele pentru sincronizare (folosit de cealalta instanta)"""
+    # Accept both GET with query param and direct call
+    products = await db.products.find({}, {"_id": 0}).to_list(None)
+    return {"products": products, "count": len(products)}
+
+
+@router.post("/sync/products/push")
+async def receive_products(data: dict):
+    """Primeste produse de la cealalta instanta si le sincronizeaza"""
+    secret = data.get("sync_secret", "")
+    if secret != SYNC_SECRET:
+        raise HTTPException(status_code=401, detail="Cheie sincronizare invalida")
+
+    products = data.get("products", [])
+    if not products:
+        return {"added": 0, "updated": 0}
+
+    added = 0
+    updated = 0
+
+    for prod in products:
+        prod.pop("_id", None)
+        prod_id = prod.get("id")
+        if not prod_id:
+            continue
+
+        existing = await db.products.find_one({"id": prod_id})
+        if existing:
+            # Actualizeaza produsul existent (stoc, pret, etc.)
+            update_fields = {}
+            for key in ["nume", "categorie", "cod_bare", "pret_achizitie", "pret_vanzare",
+                        "tva", "unitate", "stoc", "stoc_minim", "furnizor"]:
+                if key in prod:
+                    update_fields[key] = prod[key]
+            if update_fields:
+                update_fields["synced_at"] = datetime.now(timezone.utc).isoformat()
+                await db.products.update_one(
+                    {"id": prod_id},
+                    {"$set": update_fields}
+                )
+                updated += 1
+        else:
+            # Produs nou
+            prod["synced_at"] = datetime.now(timezone.utc).isoformat()
+            await db.products.insert_one(prod)
+            added += 1
+
+    logger.info(f"[SYNC] Produse: {added} adaugate, {updated} actualizate")
+    return {"added": added, "updated": updated}

@@ -89,34 +89,74 @@ export default function Layout() {
   const doAutoSync = useCallback(async (vpsUrl) => {
     if (syncing) return;
     setSyncing(true);
+    const syncSecret = localStorage.getItem('andrepau_sync_secret') || 'andrepau-sync-2026';
     try {
+      // === 1. SYNC VANZARI: Local → VPS ===
       const pendingResp = await fetch(`${API_URL}/sync/pending-sales`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (!pendingResp.ok) { setSyncing(false); return; }
-      const { sales } = await pendingResp.json();
-      if (!sales || sales.length === 0) { setSyncing(false); return; }
-
-      const syncSecret = localStorage.getItem('andrepau_sync_secret') || 'andrepau-sync-2026';
-      const syncResp = await fetch(`${vpsUrl}/api/sync/receive`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sync_secret: syncSecret, sales })
-      });
-      if (!syncResp.ok) { setSyncing(false); return; }
-      const syncResult = await syncResp.json();
-
-      const saleIds = sales.map(s => s.id);
-      await fetch(`${API_URL}/sync/mark-done`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ sale_ids: saleIds })
-      });
-
-      setPendingSyncCount(0);
-      if (syncResult.received > 0) {
-        toast.success(`${syncResult.received} vanzari sincronizate automat cu VPS`);
+      if (pendingResp.ok) {
+        const { sales } = await pendingResp.json();
+        if (sales && sales.length > 0) {
+          const syncResp = await fetch(`${vpsUrl}/api/sync/receive`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sync_secret: syncSecret, sales })
+          });
+          if (syncResp.ok) {
+            const syncResult = await syncResp.json();
+            const saleIds = sales.map(s => s.id);
+            await fetch(`${API_URL}/sync/mark-done`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ sale_ids: saleIds })
+            });
+            setPendingSyncCount(0);
+            if (syncResult.received > 0) {
+              toast.success(`${syncResult.received} vanzari sincronizate cu VPS`);
+            }
+          }
+        }
       }
+
+      // === 2. SYNC PRODUSE: VPS → Local (descarca produse de pe VPS) ===
+      try {
+        const vpsProdResp = await fetch(`${vpsUrl}/api/sync/products`);
+        if (vpsProdResp.ok) {
+          const { products: vpsProducts } = await vpsProdResp.json();
+          if (vpsProducts && vpsProducts.length > 0) {
+            const pushResp = await fetch(`${API_URL}/sync/products/push`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sync_secret: syncSecret, products: vpsProducts })
+            });
+            if (pushResp.ok) {
+              const result = await pushResp.json();
+              if (result.added > 0) {
+                toast.success(`${result.added} produse noi sincronizate de pe VPS`);
+              }
+            }
+          }
+        }
+      } catch { /* silent */ }
+
+      // === 3. SYNC PRODUSE: Local → VPS (trimite produse locale pe VPS) ===
+      try {
+        const localProdResp = await fetch(`${API_URL}/sync/products`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (localProdResp.ok) {
+          const { products: localProducts } = await localProdResp.json();
+          if (localProducts && localProducts.length > 0) {
+            await fetch(`${vpsUrl}/api/sync/products/push`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sync_secret: syncSecret, products: localProducts })
+            });
+          }
+        }
+      } catch { /* silent */ }
+
     } catch {
       // Silent fail - will retry next cycle
     } finally {

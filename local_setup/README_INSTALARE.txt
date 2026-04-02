@@ -1,158 +1,210 @@
-================================================================
-    ANDREPAU POS - GHID INSTALARE PE PC WINDOWS
-    Aplicatie Offline pentru Magazin
-================================================================
+============================================================
+     ANDREPAU POS - GHID COMPLET INSTALARE SI UTILIZARE
+============================================================
 
-CERINTE MINIME:
-  - Windows 10 sau 11 (64-bit)
-  - 4 GB RAM minim
-  - 2 GB spatiu pe disc
-  - Conexiune internet (doar pentru instalare si actualizari)
 
-================================================================
-PASUL 1: INSTALARE PROGRAME NECESARE
-================================================================
+============================================================
+PARTEA 1: INSTALARE PE PC-UL DIN MAGAZIN (o singura data)
+============================================================
 
-1.1. Python (necesar pentru backend si bridge)
-     Descarcati de pe: https://www.python.org/downloads/
-     La instalare BIFATI:
-       [x] Add Python to PATH
-       [x] Install for all users
-     Restart PC dupa instalare.
+PASUL 1: Deschide CMD
+    - Apasa tasta Windows
+    - Scrie: cmd
+    - Click pe "Command Prompt"
 
-1.2. Node.js (necesar pentru frontend)
-     Descarcati versiunea LTS de pe: https://nodejs.org/
-     Instalati cu setarile implicite.
+PASUL 2: Scrie aceste 2 comenzi (una cate una):
 
-1.3. MongoDB Community Server (baza de date)
-     Descarcati de pe: https://www.mongodb.com/try/download/community
-     La instalare alegeti:
-       [x] Install MongoDB as a Service
-       [x] Run service as Network Service user
-     Aceasta face ca MongoDB sa porneasca automat cu Windows.
+    cd C:\
+    git clone https://github.com/L3ga2002/AndrepauVersiuneOnline.git ANDREPAU
 
-1.4. Git (necesar pentru actualizari)
-     Descarcati de pe: https://git-scm.com/download/win
-     Instalati cu setarile implicite.
+    NOTA: Daca apare eroare "git is not recognized":
+    - Descarca Git de pe: https://git-scm.com/download/win
+    - Instaleaza-l (Next, Next, Finish)
+    - Inchide CMD si deschide altul nou
+    - Repeta comenzile de mai sus
 
-================================================================
-PASUL 2: DESCARCARE APLICATIE
-================================================================
+PASUL 3: Ruleaza instalarea automata:
 
-Deschideti CMD (Command Prompt) si rulati:
+    C:\ANDREPAU\INSTALEAZA_TOTUL.bat
 
-  cd C:\
-  git clone https://github.com/CONTUL_GITHUB/andrepau-pos.git ANDREPAU
+    Scriptul face TOTUL singur:
+    - Verifica daca Python e instalat, daca nu il descarca
+      IMPORTANT: Cand se deschide installerul Python bifeaza:
+      [x] Add Python to PATH (jos de tot!)
+      Apoi click "Install Now" si asteapta
+    - Verifica Node.js, daca nu il descarca
+      Click: Next, Next, Next, Install, Finish
+    - Verifica MongoDB (fisier mare ~500MB, asteapta 2-5 min)
+      Click: Next, Accept, "Complete"
+      IMPORTANT: Lasa bifat [x] Install MongoDB as a Service
+      Next, Install, Finish
+    - Verifica Git (daca nu e instalat deja)
+    - Descarca aplicatia din GitHub
+    - Instaleaza toate dependentele automat
+    - Construieste aplicatia (dureaza 1-2 min)
+    - Creeaza shortcut "ANDREPAU POS" pe Desktop
+    - Porneste aplicatia prima data
 
-(Inlocuiti CONTUL_GITHUB cu contul real de GitHub)
+PASUL 4: Gata! Aplicatia se deschide automat.
+    - Cont admin:  admin / admin123
+    - Cont casier: casier / casier123
 
-================================================================
-PASUL 3: INSTALARE APLICATIE
-================================================================
 
-Navigati in folder:
-  C:\ANDREPAU\local_setup\
+============================================================
+PARTEA 2: PRIMA CONFIGURARE (o singura data)
+============================================================
 
-Dublu-click pe:
-  install_andrepau.bat
+PASUL 1: Import produse de pe VPS
+    - Deschide VPS-ul in browser (https://andrepau.com)
+    - Logheaza-te ca admin
+    - Mergi la Setari > Backup
+    - Click "Export Excel Produse" - descarca fisierul .xlsx
+    - Pe aplicatia locala (localhost:8001)
+    - Mergi la Produse > Import > alege fisierul .xlsx
+    - Asteapta sa se importe (poate dura 1-2 min)
 
-Scriptul verifica automat:
-  - Python instalat
-  - Node.js instalat
-  - MongoDB instalat
-  - Instaleaza dependentele Python
-  - Instaleaza dependentele frontend
-  - Construieste aplicatia frontend
+PASUL 2: Configurare sincronizare automata
+    - Pe aplicatia locala, mergi la Setari > Sincronizare
+    - La "Adresa VPS (URL)" scrie adresa site-ului:
+      Exemplu: https://andrepau.com
+    - La "Cheie Sincronizare" lasa: andrepau-sync-2026
+    - Click "Salveaza Configurare"
+    - De acum, produsele si vanzarile se sincronizeaza
+      automat la fiecare 30 secunde cand ai internet
 
-================================================================
-PASUL 4: PORNIRE APLICATIE
-================================================================
+PASUL 3: Shortcut pe Desktop (daca nu s-a creat automat)
+    - Deschide "Acest PC" sau "My Computer"
+    - Navigheaza la C:\ANDREPAU\
+    - Click dreapta pe ANDREPAU.bat
+    - "Send to" > "Desktop (create shortcut)"
 
-Dublu-click pe:
-  C:\ANDREPAU\local_setup\start_andrepau.bat
 
-Scriptul porneste automat:
-  1. MongoDB (daca nu ruleaza deja)
-  2. Backend FastAPI (port 8001)
-  3. Bridge fiscal INCOTEX (port 5555)
-  4. Deschide browserul la http://localhost:8001
+============================================================
+PARTEA 3: UTILIZARE ZILNICA
+============================================================
 
-Cont admin:  admin / admin123
-Cont casier: casier / casier123
+PORNIRE APLICATIE:
+    - Dublu-click pe "ANDREPAU POS" de pe Desktop
+    - Aplicatia se deschide ca un program normal
+    - Nu apar ferestre CMD vizibile
+    - Functioneaza cu sau fara internet
 
-================================================================
-PASUL 5: OPRIRE APLICATIE
-================================================================
+OPRIRE APLICATIE:
+    - Dublu-click pe C:\ANDREPAU\OPRESTE_ANDREPAU.bat
+    - Sau inchide browserul si serviciile se opresc singure
+      la restart PC
 
-Dublu-click pe:
-  C:\ANDREPAU\local_setup\stop_andrepau.bat
+CU INTERNET:
+    - In sidebar scrie "MOD LOCAL (Offline)" dar
+      vanzarile se sincronizeaza automat cu VPS-ul
+    - Patronul vede totul actualizat pe VPS
 
-SAU inchideti ferestrele CMD cu titlul ANDREPAU.
+FARA INTERNET:
+    - Aplicatia merge la fel, fara intrerupere
+    - Faci vanzari numerar + bonuri fiscale normal
+    - Cand revine internetul, se sincronizeaza automat
 
-================================================================
-ACTUALIZARI
-================================================================
+CASA DE MARCAT (INCOTEX):
+    - Bridge-ul porneste automat cu aplicatia
+    - SuccesDrv trebuie sa fie pornit (Start procesare)
+    - Verifica pe Deschidere Zi: "Casa de Marcat: Conectata"
 
-Cand primiti o actualizare noua:
 
-1. Asigurati-va ca aveti conexiune la internet
-2. Dublu-click pe: update_local.bat
+============================================================
+PARTEA 4: ACTUALIZARI
+============================================================
 
-SAU manual:
-  cd C:\ANDREPAU
-  git pull origin main
-  cd backend && pip install -r requirements.txt
-  cd ..\frontend && yarn install && yarn build
+CAND PRIMESTI O ACTUALIZARE NOUA:
 
-Apoi reporniti aplicatia cu start_andrepau.bat.
+PE VPS (serveru online):
+    1. Pe Emergent: click "Save to Github"
+    2. Conecteaza-te pe VPS prin SSH (PuTTY)
+    3. Scrie:  /opt/update.sh
+    4. Gata!
 
-================================================================
-CUM FUNCTIONEAZA ONLINE / OFFLINE
-================================================================
+PE PC-UL LOCAL (din magazin sau de acasa):
+    1. Asigura-te ca ai internet
+    2. Deschide CMD
+    3. Scrie aceste comenzi:
 
-MODUL NORMAL (cu internet):
-  - Deschideti browserul la adresa VPS: https://andrepau.com
-  - Patronul poate accesa din birou
-  - Bridge-ul trimite bonuri prin cloud
+       cd C:\ANDREPAU
+       git stash
+       git pull origin main
+       cd backend
+       pip install -r requirements.txt
+       cd ..\frontend
+       yarn build
 
-MODUL OFFLINE (fara internet):
-  - Deschideti browserul la: http://localhost:8001
-  - Aplicatia detecteaza automat ca e locala
-  - Puteti face vanzari numerar + bonuri fiscale
-  - Cand revine internetul, vanzarile se sincronizeaza
+    4. Reporneste aplicatia (inchide si redeschide ANDREPAU POS)
 
-BRIDGE FISCAL:
-  - Porneste automat cu start_andrepau.bat
-  - In modul local, bridge-ul comunica direct cu backend-ul
-  - SuccesDrv trebuie sa aiba "Start procesare" apasat!
-  - Pagina control bridge: http://localhost:5555/test
 
-================================================================
-PROBLEME FRECVENTE
-================================================================
+============================================================
+PARTEA 5: CE SE SINCRONIZEAZA AUTOMAT
+============================================================
 
-1. "Python nu este recunoscut"
-   → Reinstalati Python cu "Add to PATH" bifat
-   → Restartati PC-ul
+Intre PC-ul local si VPS se sincronizeaza:
 
-2. "MongoDB nu porneste"
-   → Deschideti Services.msc si cautati "MongoDB"
-   → Click dreapta → Start
+    VANZARI:   Local --> VPS (la fiecare 30 sec)
+    PRODUSE:   VPS <--> Local (in ambele directii)
+    STOCURI:   Se actualizeaza automat cu vanzarile
 
-3. "Eroare la pornire backend"
-   → Deschideti CMD in folderul backend
-   → Rulati: pip install -r requirements.txt
-   → Apoi: python -m uvicorn server:app --port 8001
+Conditii:
+    - PC-ul trebuie sa aiba internet
+    - URL-ul VPS trebuie configurat in Setari > Sincronizare
+    - Cheia de sincronizare trebuie sa fie aceeasi pe ambele
 
-4. "Bridge nu se conecteaza la casa de marcat"
-   → Verificati ca SuccesDrv este pornit si are "Start procesare"
-   → Verificati conexiunea COM port/USB
-   → Testati la: http://localhost:5555/test → "Diagnostic Complet"
 
-5. "Aplicatia nu se deschide in browser"
-   → Deschideti manual: http://localhost:8001
-   → Asteptati 10-15 secunde dupa pornire
+============================================================
+PARTEA 6: PROBLEME FRECVENTE
+============================================================
 
-================================================================
-CONTACT SUPORT: [adaugati informatiile de contact]
-================================================================
+1. "Aplicatia nu porneste"
+   - Verifica ca MongoDB ruleaza:
+     Deschide CMD, scrie: sc query MongoDB
+     Daca nu ruleaza: net start MongoDB
+
+2. "Nu am produse pe local"
+   - Import din Excel (vezi Partea 2, Pasul 1)
+   - Sau asteapta sincronizarea automata (30 sec)
+
+3. "Casa de marcat nu se conecteaza"
+   - Verifica ca SuccesDrv e pornit (Start procesare)
+   - Verifica cablul USB/COM
+   - Testeaza: http://localhost:5555/test
+
+4. "VPS nu se actualizeaza"
+   - Verifica ca ai dat "Save to Github" pe Emergent
+   - Pe VPS: /opt/update.sh
+   - Daca eroare "git stash":
+     cd /opt/andrepau && git stash && git pull origin main
+
+5. "Eroare la pip install"
+   - Pe VPS foloseste virtualenv:
+     source backend/venv/bin/activate
+     pip install -r requirements.txt
+     deactivate
+
+6. "Nu se sincronizeaza cu VPS"
+   - Verifica Setari > Sincronizare > URL VPS
+   - Verifica ca ai internet
+   - Verifica ca pe VPS e actualizat codul
+
+
+============================================================
+INFORMATII UTILE
+============================================================
+
+Aplicatie locala:  http://localhost:8001
+Bridge fiscal:    http://localhost:5555/test
+Cont admin:       admin / admin123
+Cont casier:      casier / casier123
+Repo GitHub:      https://github.com/L3ga2002/AndrepauVersiuneOnline
+
+Foldere:
+    C:\ANDREPAU\                - folderul principal
+    C:\ANDREPAU\ANDREPAU.bat    - pornire aplicatie
+    C:\ANDREPAU\backend\        - serverul Python
+    C:\ANDREPAU\frontend\       - interfata
+    C:\ANDREPAU\local_setup\    - scripturi instalare
+
+============================================================

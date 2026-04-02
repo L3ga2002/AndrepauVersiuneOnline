@@ -119,9 +119,11 @@ export default function Layout() {
         }
       }
 
-      // === 2. SYNC PRODUSE: VPS → Local (descarca produse de pe VPS) ===
+      // === 2. SYNC PRODUSE: VPS → Local (doar modificari noi) ===
       try {
-        const vpsProdResp = await fetch(`${vpsUrl}/api/sync/products`);
+        const lastSync = localStorage.getItem('andrepau_last_product_sync') || '';
+        const sinceParam = lastSync ? `?since=${encodeURIComponent(lastSync)}` : '';
+        const vpsProdResp = await fetch(`${vpsUrl}/api/sync/products/changes${sinceParam}`);
         if (vpsProdResp.ok) {
           const { products: vpsProducts } = await vpsProdResp.json();
           if (vpsProducts && vpsProducts.length > 0) {
@@ -133,16 +135,18 @@ export default function Layout() {
             if (pushResp.ok) {
               const result = await pushResp.json();
               if (result.added > 0) {
-                toast.success(`${result.added} produse noi sincronizate de pe VPS`);
+                toast.success(`${result.added} produse noi de pe VPS`);
               }
             }
           }
         }
       } catch { /* silent */ }
 
-      // === 3. SYNC PRODUSE: Local → VPS (trimite produse locale pe VPS) ===
+      // === 3. SYNC PRODUSE: Local → VPS (doar modificari noi) ===
       try {
-        const localProdResp = await fetch(`${API_URL}/sync/products`, {
+        const lastSync = localStorage.getItem('andrepau_last_product_sync') || '';
+        const sinceParam = lastSync ? `?since=${encodeURIComponent(lastSync)}` : '';
+        const localProdResp = await fetch(`${API_URL}/sync/products/changes${sinceParam}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (localProdResp.ok) {
@@ -156,6 +160,9 @@ export default function Layout() {
           }
         }
       } catch { /* silent */ }
+
+      // Salveaza timestamp ultima sincronizare
+      localStorage.setItem('andrepau_last_product_sync', new Date().toISOString());
 
     } catch {
       // Silent fail - will retry next cycle

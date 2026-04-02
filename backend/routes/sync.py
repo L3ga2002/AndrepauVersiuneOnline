@@ -134,29 +134,57 @@ async def receive_products(data: dict):
     for prod in products:
         prod.pop("_id", None)
         prod_id = prod.get("id")
-        if not prod_id:
+        cod_bare = prod.get("cod_bare", "")
+        nume = prod.get("nume", "")
+        if not prod_id and not cod_bare and not nume:
             continue
 
-        existing = await db.products.find_one({"id": prod_id})
+        # Cauta produsul existent: dupa id, cod_bare, sau nume exact
+        existing = None
+        if prod_id:
+            existing = await db.products.find_one({"id": prod_id})
+        if not existing and cod_bare:
+            existing = await db.products.find_one({"cod_bare": cod_bare})
+        if not existing and nume:
+            existing = await db.products.find_one({"nume": nume})
+
         if existing:
-            # Actualizeaza produsul existent (stoc, pret, etc.)
+            # Actualizeaza DOAR daca produsul sursă e mai nou
+            src_updated = prod.get("updated_at", prod.get("created_at", ""))
+            dst_updated = existing.get("updated_at", existing.get("created_at", ""))
+            if src_updated and dst_updated and src_updated <= dst_updated:
+                continue
+
             update_fields = {}
-            for key in ["nume", "categorie", "cod_bare", "pret_achizitie", "pret_vanzare",
-                        "tva", "unitate", "stoc", "stoc_minim", "furnizor"]:
-                if key in prod:
+            for key in ["pret_achizitie", "pret_vanzare", "tva", "stoc", "stoc_minim",
+                        "categorie", "unitate", "furnizor", "cod_bare"]:
+                if key in prod and prod[key] != existing.get(key):
                     update_fields[key] = prod[key]
             if update_fields:
-                update_fields["synced_at"] = datetime.now(timezone.utc).isoformat()
+                update_fields["updated_at"] = datetime.now(timezone.utc).isoformat()
                 await db.products.update_one(
-                    {"id": prod_id},
+                    {"_id": existing["_id"]},
                     {"$set": update_fields}
                 )
                 updated += 1
         else:
-            # Produs nou
-            prod["synced_at"] = datetime.now(timezone.utc).isoformat()
+            # Produs nou - adauga
+            prod["updated_at"] = datetime.now(timezone.utc).isoformat()
             await db.products.insert_one(prod)
             added += 1
 
     logger.info(f"[SYNC] Produse: {added} adaugate, {updated} actualizate")
     return {"added": added, "updated": updated}
+
+
+@router.get("/sync/products/changes")
+async def get_changed_products(since: str = ""):
+    """Returneaza doar produsele modificate dupa un anumit timestamp"""
+    query = {}
+    if since:
+        query["$or"] = [
+            {"updated_at": {"$gt": since}},
+            {"created_at": {"$gt": since}}
+        ]
+    products = await db.products.find(query, {"_id": 0}).to_list(None)
+    return {"products": products, "count": len(products)}

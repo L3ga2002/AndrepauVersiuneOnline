@@ -69,10 +69,14 @@ async def receive_synced_sales(data: dict):
         await db.sales.insert_one(sale)
 
         # Actualizeaza stocul
+        now_iso = datetime.now(timezone.utc).isoformat()
         for item in sale.get("items", []):
             await db.products.update_one(
                 {"id": item.get("product_id")},
-                {"$inc": {"stoc": -item.get("cantitate", 0)}}
+                {
+                    "$inc": {"stoc": -item.get("cantitate", 0)},
+                    "$set": {"updated_at": now_iso}
+                }
             )
 
         received += 1
@@ -156,8 +160,11 @@ async def receive_products(data: dict):
                 continue
 
             update_fields = {}
-            for key in ["pret_achizitie", "pret_vanzare", "tva", "stoc", "stoc_minim",
-                        "categorie", "unitate", "furnizor", "cod_bare"]:
+            # IMPORTANT: stocul NU se sincronizeaza prin product push (pentru a evita
+            # conflicte cand ambele instante au vanzari simultan). Stocul este gestionat
+            # EXCLUSIV prin sincronizarea vanzarilor (/sync/receive si /sync/sales-since).
+            for key in ["pret_achizitie", "pret_vanzare", "tva", "stoc_minim",
+                        "categorie", "unitate", "furnizor", "cod_bare", "nume"]:
                 if key in prod and prod[key] != existing.get(key):
                     update_fields[key] = prod[key]
             if update_fields:
@@ -188,3 +195,74 @@ async def get_changed_products(since: str = ""):
         ]
     products = await db.products.find(query, {"_id": 0}).to_list(None)
     return {"products": products, "count": len(products)}
+
+
+# =============================================
+#  SINCRONIZARE VANZARI BIDIRECTIONALA (VPS -> Local)
+# =============================================
+
+@router.get("/sync/sales-since")
+async def get_sales_since(since: str = ""):
+    """Returneaza vanzarile create dupa un anumit timestamp.
+    Folosit de instanta Local pentru a prelua vanzari de pe VPS si a aplica
+    decrementarea stocului local. NU necesita autentificare (doar timestamp)."""
+    query = {}
+    if since:
+        query["created_at"] = {"$gt": since}
+    sales = await db.sales.find(query, {"_id": 0}).sort("created_at", 1).to_list(10000)
+    return {"sales": sales, "count": len(sales)}
+
+
+@router.post("/sync/apply-remote-sales")
+async def apply_remote_sales(data: dict):
+    """Aplica vanzari primite de la VPS pe instanta locala (doar decrementare stoc).
+    Nu re-insereaza vanzarile daca deja exista (verificare dupa transaction_id)."""
+    secret = data.get("sync_secret", "")
+    if secret != SYNC_SECRET:
+        raise HTTPException(status_code=401, detail="Cheie sincronizare invalida")
+
+    sales = data.get("sales", [])
+    if not sales:
+        return {"applied": 0, "skipped": 0}
+
+    applied = 0
+    skipped = 0
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for sale in sales:
+        txn_id = sale.get("transaction_id")
+        sale_id = sale.get("id")
+
+        # Skip if sale already exists locally
+        if txn_id:
+            existing = await db.sales.find_one({"transaction_id": txn_id})
+            if existing:
+                skipped += 1
+                continue
+        if sale_id:
+            existing = await db.sales.find_one({"id": sale_id})
+            if existing:
+                skipped += 1
+                continue
+
+        # Insert sale + decrement stock
+        sale.pop("_id", None)
+        sale["synced"] = True
+        sale["synced_from"] = "vps"
+        sale["synced_at"] = now_iso
+
+        await db.sales.insert_one(sale)
+
+        for item in sale.get("items", []):
+            await db.products.update_one(
+                {"id": item.get("product_id")},
+                {
+                    "$inc": {"stoc": -item.get("cantitate", 0)},
+                    "$set": {"updated_at": now_iso}
+                }
+            )
+
+        applied += 1
+
+    logger.info(f"[SYNC] Aplicate {applied} vanzari de la VPS, {skipped} deja existente")
+    return {"applied": applied, "skipped": skipped}

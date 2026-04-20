@@ -54,7 +54,7 @@ Complete store management and POS application for "ANDREPAU" construction materi
 ## Deployment
 - VPS: Hostinger Ubuntu 24.04, path: `/opt/andrepau`, venv: `backend/venv`, service: `systemctl restart andrepau-backend`
 - Repo: `https://github.com/L3ga2002/AndrepauVersiuneOnline.git`
-- Preview: https://desktop-pos-manager.preview.emergentagent.com
+- Preview: https://offline-retail-hub-4.preview.emergentagent.com
 - Backend: FastAPI on port 8001
 - Frontend: React on port 3000
 - Database: MongoDB

@@ -119,7 +119,33 @@ export default function Layout() {
         }
       }
 
-      // === 2. SYNC PRODUSE: VPS → Local (doar modificari noi) ===
+      // === 2. SYNC VANZARI: VPS → Local (decrementeaza stocul local) ===
+      try {
+        const lastSalesSync = localStorage.getItem('andrepau_last_sales_pull') || '';
+        const sinceParam = lastSalesSync ? `?since=${encodeURIComponent(lastSalesSync)}` : '';
+        const vpsSalesResp = await fetch(`${vpsUrl}/api/sync/sales-since${sinceParam}`);
+        if (vpsSalesResp.ok) {
+          const { sales: vpsSales } = await vpsSalesResp.json();
+          // Filtreaza: nu re-aplica vanzarile originate din Local (synced_from=local)
+          const remoteOnly = (vpsSales || []).filter(s => s.synced_from !== 'local');
+          if (remoteOnly.length > 0) {
+            const applyResp = await fetch(`${API_URL}/sync/apply-remote-sales`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sync_secret: syncSecret, sales: remoteOnly })
+            });
+            if (applyResp.ok) {
+              const result = await applyResp.json();
+              if (result.applied > 0) {
+                toast.success(`${result.applied} vanzari VPS aplicate local (stoc actualizat)`);
+              }
+            }
+          }
+          localStorage.setItem('andrepau_last_sales_pull', new Date().toISOString());
+        }
+      } catch { /* silent */ }
+
+      // === 3. SYNC PRODUSE: VPS → Local (doar modificari noi) ===
       try {
         const lastSync = localStorage.getItem('andrepau_last_product_sync') || '';
         const sinceParam = lastSync ? `?since=${encodeURIComponent(lastSync)}` : '';
@@ -142,7 +168,7 @@ export default function Layout() {
         }
       } catch { /* silent */ }
 
-      // === 3. SYNC PRODUSE: Local → VPS (doar modificari noi) ===
+      // === 4. SYNC PRODUSE: Local → VPS (doar modificari noi) ===
       try {
         const lastSync = localStorage.getItem('andrepau_last_product_sync') || '';
         const sinceParam = lastSync ? `?since=${encodeURIComponent(lastSync)}` : '';
@@ -161,7 +187,7 @@ export default function Layout() {
         }
       } catch { /* silent */ }
 
-      // Salveaza timestamp ultima sincronizare
+      // Salveaza timestamp ultima sincronizare produse
       localStorage.setItem('andrepau_last_product_sync', new Date().toISOString());
 
     } catch {
@@ -189,7 +215,7 @@ export default function Layout() {
       return;
     }
 
-    // Check VPS reachability + auto sync if pending
+    // Check VPS reachability + ALWAYS sync (not only when pending > 0)
     const vpsUrl = localStorage.getItem('andrepau_vps_url');
     if (vpsUrl) {
       try {
@@ -200,8 +226,8 @@ export default function Layout() {
         const reachable = resp.ok;
         setVpsReachable(reachable);
 
-        // AUTO SYNC: VPS available + pending sales = sync immediately
-        if (reachable && pending > 0) {
+        // AUTO SYNC mereu daca VPS e disponibil (vanzari + stoc + produse)
+        if (reachable) {
           doAutoSync(vpsUrl);
         }
       } catch {
@@ -213,7 +239,8 @@ export default function Layout() {
   useEffect(() => {
     if (!isLocalMode) return;
     checkSyncStatus();
-    const interval = setInterval(checkSyncStatus, 30000);
+    // Sincronizare la fiecare 15 secunde (redus de la 30s pentru raspuns mai rapid la stocuri)
+    const interval = setInterval(checkSyncStatus, 15000);
     return () => clearInterval(interval);
   }, [checkSyncStatus]);
 

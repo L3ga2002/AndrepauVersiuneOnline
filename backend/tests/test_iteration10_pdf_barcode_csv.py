@@ -15,7 +15,7 @@ import requests
 import os
 import io
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://desktop-pos-manager.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://offline-retail-hub-4.preview.emergentagent.com')
 
 # Test credentials
 ADMIN_CREDS = {"username": "admin", "password": "admin123"}

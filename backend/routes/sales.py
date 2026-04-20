@@ -45,10 +45,14 @@ async def create_sale(sale: SaleCreate, user: dict = Depends(get_current_user)):
     }
 
     stock_changes = []
+    now_iso = datetime.now(timezone.utc).isoformat()
     for item in sale.items:
         result = await db.products.update_one(
             {"id": item.product_id},
-            {"$inc": {"stoc": -item.cantitate}}
+            {
+                "$inc": {"stoc": -item.cantitate},
+                "$set": {"updated_at": now_iso}
+            }
         )
         stock_changes.append({
             "product_id": item.product_id,

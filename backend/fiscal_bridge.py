@@ -1155,7 +1155,7 @@ def poll_cloud_jobs():
         except Exception as e:
             logger.error(f"Eroare polling: {e}")
         
-        time.sleep(2)  # Poll la fiecare 2 secunde
+        time.sleep(0.5)  # Poll la fiecare 0.5 secunde pentru raspuns rapid
 
 def execute_fiscal_job(job: dict) -> dict:
     """Executa un job fiscal primit de la cloud"""

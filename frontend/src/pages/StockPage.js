@@ -325,7 +325,7 @@ export default function StockPage() {
           product_id: item.product_id || null,
           denumire: item.product_nume || item.denumire_pdf,
           cantitate: parseFloat(item.cantitate),
-          pret_achizitie: parseFloat(item.pret_unitar),
+          pret_vanzare: parseFloat(item.pret_unitar),
           um: item.um || 'buc'
         }))
       };
@@ -406,7 +406,15 @@ export default function StockPage() {
 
       if (response.ok) {
         const result = await response.json();
-        toast.success(`${result.updated} coduri de bare actualizate`);
+        const mergeCount = result.merged || 0;
+        const updateCount = result.updated || 0;
+        if (mergeCount > 0 && updateCount > 0) {
+          toast.success(`${updateCount} coduri salvate + ${mergeCount} produse duplicate unificate (stoc transferat)`);
+        } else if (mergeCount > 0) {
+          toast.success(`${mergeCount} produse duplicate unificate automat (stoc transferat)`);
+        } else {
+          toast.success(`${updateCount} coduri de bare actualizate`);
+        }
         fetchProducts();
       } else {
         toast.error('Eroare la salvare coduri de bare');
@@ -962,7 +970,7 @@ export default function StockPage() {
                           <TableHead className="text-muted-foreground w-[35%]">Denumire din PDF</TableHead>
                           <TableHead className="text-muted-foreground w-[25%]">Produs Potrivit</TableHead>
                           <TableHead className="text-muted-foreground text-center w-[12%]">Cantitate</TableHead>
-                          <TableHead className="text-muted-foreground text-center w-[13%]">Preț Unit.</TableHead>
+                          <TableHead className="text-muted-foreground text-center w-[13%]">Preț Vânzare</TableHead>
                           <TableHead className="text-muted-foreground text-right w-[15%]">Valoare</TableHead>
                         </TableRow>
                       </TableHeader>

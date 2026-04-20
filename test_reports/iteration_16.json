@@ -1,0 +1,75 @@
+{
+  "summary": "Iteration 16: Verified all backend changes for sync flow, NIR PDF parser, and barcode merge logic. 16/16 tests passed (100%). All requested features work correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/products/{id} (ProductResponse)", "issue": "ProductResponse Pydantic model does not expose 'updated_at' field even though it's stored in DB. Frontend cannot see the updated_at for sync decisions without raw DB or a separate endpoint. Verified via direct Mongo check instead."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Auth admin/admin123 works (JWT returned)",
+    "POST /api/sales -> product.updated_at is set in DB when stock decremented",
+    "GET /api/sync/sales-since works without auth (returns {sales, count})",
+    "GET /api/sync/sales-since?since=<future> returns empty list",
+    "GET /api/sync/sales-since?since=<past> returns sales list",
+    "POST /api/sync/apply-remote-sales rejects invalid sync_secret (401)",
+    "POST /api/sync/apply-remote-sales with empty sales returns {applied:0, skipped:0}",
+    "POST /api/sync/apply-remote-sales decrements stock AND sets updated_at",
+    "POST /api/sync/apply-remote-sales skips duplicates by transaction_id",
+    "POST /api/sync/apply-remote-sales skips duplicates by id (when no txn_id)",
+    "POST /api/sync/receive rejects invalid secret (401)",
+    "POST /api/sync/receive decrements stock AND sets updated_at on products",
+    "POST /api/sync/products/push does NOT overwrite stoc on existing products (only updates price/other fields)",
+    "POST /api/sync/products/push inserts stoc correctly on NEW products",
+    "POST /api/nir/parse-pdf returns 12 items from TOP_2026001074.pdf with PRET VANZARE (25.00, 60.00, 41.00 present among prices)",
+    "POST /api/nir/from-pdf accepts pret_vanzare; new product created with pret_vanzare (no *1.3 markup)",
+    "POST /api/nir/from-pdf on existing product: stock incremented + pret_vanzare updated + original name PRESERVED",
+    "POST /api/products/bulk-barcode MERGE: when barcode exists on another product, current product deleted, stock transferred, response includes merged count + merge_details",
+    "POST /api/products/bulk-barcode normal update when barcode unique returns updated=1, merged=0"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration16_sync_nir_merge.py",
+    "/app/test_reports/pytest/iteration16_results.xml"
+  ],
+  "action_items": [
+    "Consider adding 'updated_at' to ProductResponse model if frontend needs it for sync status. Currently only in DB.",
+    "(Optional) ANAF/invoice field 'cui' used in test is not validated by backend; this is fine for sync flow but noted."
+  ],
+  "critical_code_review_comments": [
+    "sync/products/push correctly removed 'stoc' from updatable fields - prevents race condition when both instances have concurrent sales. Good fix.",
+    "sync/sales-since does NOT require authentication (per design spec) - ensure SYNC_SECRET is protected on apply-remote-sales (confirmed).",
+    "bulk_update_barcodes merge logic preserves ORIGINAL product name when merging; stock is transferred via $inc - safe under concurrency.",
+    "create_nir_from_pdf now uses {'$set': {'pret_vanzare': ...}} on existing product instead of overwriting name - correct behavior for duplicates via barcode.",
+    "ProductResponse Pydantic model omits updated_at - consider adding it (Optional[str]) for API consistency with internal DB schema."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration16_sync_nir_merge.py"
+  ],
+  "success_rate": {
+    "backend": "100% (16/16 tests passed)",
+    "frontend": "not tested (backend-only request)"
+  },
+  "test_credentials": {
+    "admin": {"username": "admin", "password": "admin123"},
+    "sync_secret": "andrepau-sync-2026"
+  },
+  "seed_data_creation": "Created (and cleaned up) TEST_SYNC_PROD_*, TEST_MERGE_A/B_*, TEST_SUP_* ephemeral products/suppliers. Some TEST_SYNC_* sales inserted via sync endpoints remain in DB (safe, prefixed).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 16 verified: (1) product.updated_at set on stock decrement from POST /api/sales, POST /api/sync/receive, POST /api/sync/apply-remote-sales. (2) New endpoints /sync/sales-since (no auth) and /sync/apply-remote-sales (sync_secret). (3) /sync/products/push no longer touches stoc on existing products. (4) NIR parse-pdf returns 12 items with PRET VANZARE (not achizitie). (5) NIR from-pdf preserves existing product name + updates stock & pret_vanzare. (6) bulk-barcode merges duplicate products when barcode exists on another. Note: ProductResponse Pydantic model doesn't expose updated_at - tests verify via direct MongoDB read.",
+  "features_tested": {
+    "sales_updated_at": {"status": "WORKING", "notes": "Verified via raw DB read (model doesn't expose updated_at)"},
+    "sync_sales_since": {"status": "WORKING", "notes": "No auth; supports ?since= filter"},
+    "sync_apply_remote_sales": {"status": "WORKING", "notes": "Dedup by transaction_id and id; decrements stock + sets updated_at"},
+    "sync_receive_stock": {"status": "WORKING"},
+    "sync_products_push_stoc_guard": {"status": "WORKING", "notes": "stoc NOT overwritten on existing products; stoc stored on NEW inserts"},
+    "nir_parse_pdf_12_items": {"status": "WORKING", "notes": "Returns 12 items for TOP_2026001074.pdf with prices 25/60/41 etc from PRET VANZARE column"},
+    "nir_from_pdf_pret_vanzare_preserve_name": {"status": "WORKING"},
+    "bulk_barcode_merge": {"status": "WORKING", "notes": "Response includes merged count + merge_details[] with stoc_transferat"}
+  }
+}

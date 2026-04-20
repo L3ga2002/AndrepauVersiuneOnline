@@ -18,6 +18,7 @@ import CashOperationsPage from "./pages/CashOperationsPage";
 import StartDayPage from "./pages/StartDayPage";
 import Layout from "./components/Layout";
 import PWAInstallPrompt from "./components/PWAInstallPrompt";
+import ErrorBoundary from "./components/ErrorBoundary";
 import axios from "axios";
 
 // Dynamic API URL: localhost → local backend, otherwise → VPS
@@ -174,23 +175,25 @@ function App() {
 
   return (
     <div className="App">
-      <Router>
-        <AuthProvider>
-          <InitApp />
-          <AppRoutes />
-          <PWAInstallPrompt />
-          <Toaster 
-            position="top-right"
-            toastOptions={{
-              style: {
-                background: 'hsl(240 10% 6.9%)',
-                border: '1px solid hsl(240 4% 16%)',
-                color: 'hsl(0 0% 98%)',
-              },
-            }}
-          />
-        </AuthProvider>
-      </Router>
+      <ErrorBoundary>
+        <Router>
+          <AuthProvider>
+            <InitApp />
+            <AppRoutes />
+            <PWAInstallPrompt />
+            <Toaster 
+              position="top-right"
+              toastOptions={{
+                style: {
+                  background: 'hsl(240 10% 6.9%)',
+                  border: '1px solid hsl(240 4% 16%)',
+                  color: 'hsl(0 0% 98%)',
+                },
+              }}
+            />
+          </AuthProvider>
+        </Router>
+      </ErrorBoundary>
     </div>
   );
 }

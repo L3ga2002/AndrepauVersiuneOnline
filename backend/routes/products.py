@@ -456,23 +456,73 @@ async def bulk_update_tva(data: dict, user: dict = Depends(require_admin)):
 
 @router.post("/products/bulk-barcode")
 async def bulk_update_barcodes(data: dict, user: dict = Depends(require_admin)):
+    """Salveaza codurile de bare pe produse. Daca un cod de bare introdus exista DEJA pe
+    alt produs, face MERGE: transfera stocul pe produsul existent si sterge produsul nou (duplicat).
+    Astfel evitam dubluri cand la import NIR PDF se creeaza produs nou cu denumire usor diferita."""
     updates = data.get("updates", [])
     if not updates:
         raise HTTPException(status_code=400, detail="Nu sunt actualizări")
 
     updated = 0
+    merged = 0
+    merge_details = []
+    now_iso = datetime.now(timezone.utc).isoformat()
+
     for upd in updates:
         product_id = upd.get("product_id")
         barcode = upd.get("cod_bare", "").strip()
-        if product_id and barcode:
+        if not product_id or not barcode:
+            continue
+
+        # Check if barcode already exists on ANOTHER product
+        existing_with_barcode = await db.products.find_one(
+            {"cod_bare": barcode, "id": {"$ne": product_id}},
+            {"_id": 0}
+        )
+
+        if existing_with_barcode:
+            # MERGE: take stock from current product, add to existing, delete current
+            current = await db.products.find_one({"id": product_id}, {"_id": 0})
+            if current:
+                stoc_transfer = current.get("stoc", 0)
+                # Actualizeaza pret_vanzare si stoc pe produsul existent (pastreaza denumire!)
+                await db.products.update_one(
+                    {"id": existing_with_barcode["id"]},
+                    {
+                        "$inc": {"stoc": stoc_transfer},
+                        "$set": {
+                            "pret_vanzare": current.get("pret_vanzare", existing_with_barcode.get("pret_vanzare", 0)),
+                            "updated_at": now_iso
+                        }
+                    }
+                )
+                # Sterge produsul duplicat
+                await db.products.delete_one({"id": product_id})
+                merged += 1
+                merge_details.append({
+                    "deleted_product": current.get("nume", ""),
+                    "merged_into": existing_with_barcode.get("nume", ""),
+                    "stoc_transferat": stoc_transfer
+                })
+                logger.info(
+                    f"[BARCODE-MERGE] '{current.get('nume','')}' -> '{existing_with_barcode.get('nume','')}' "
+                    f"(cod_bare={barcode}, stoc_transferat={stoc_transfer})"
+                )
+        else:
+            # Normal update - set barcode on product
             result = await db.products.update_one(
                 {"id": product_id},
-                {"$set": {"cod_bare": barcode}}
+                {"$set": {"cod_bare": barcode, "updated_at": now_iso}}
             )
             if result.modified_count > 0:
                 updated += 1
 
-    return {"updated": updated, "total": len(updates)}
+    return {
+        "updated": updated,
+        "merged": merged,
+        "merge_details": merge_details,
+        "total": len(updates)
+    }
 
 
 @router.post("/products/update-tva")

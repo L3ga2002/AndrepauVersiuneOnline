@@ -177,9 +177,9 @@ export default function POSPage() {
     if (!response.ok) throw new Error('Eroare trimitere comanda');
     const { job_id } = await response.json();
     
-    // Poll for result (max 35 sec)
-    for (let i = 0; i < 35; i++) {
-      await new Promise(r => setTimeout(r, 1000));
+    // Poll for result (max 35 sec) - verificare la fiecare 500ms pentru raspuns rapid
+    for (let i = 0; i < 70; i++) {
+      await new Promise(r => setTimeout(r, 500));
       const statusResp = await fetch(`${API_URL}/fiscal/status/${job_id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -531,6 +531,7 @@ export default function POSPage() {
 
   const handlePayment = async (method) => {
     if (cart.length === 0) return;
+    if (fiscalLoading) return; // Guard: previne dublu-click
 
     // For cash payments, show calculator modal first
     if (method === 'numerar') {
@@ -569,6 +570,7 @@ export default function POSPage() {
   handlePaymentRef.current = handlePayment;
 
   const confirmCashPayment = async () => {
+    if (fiscalLoading) return; // Guard: previne dublu-click
     setShowCashCalc(false);
     if (!bridgeConnected) {
       setPendingPaymentMethod('numerar');
@@ -579,6 +581,7 @@ export default function POSPage() {
   };
 
   const processSaleWithFiscal = async (method, sumaCash, sumaCard, sumaTichete, skipFiscal = false) => {
+    if (fiscalLoadingRef.current) return; // Guard: previne executii concurente
     setFiscalLoading(true);
     try {
       // Step 1: Print fiscal receipt (if bridge connected)
@@ -819,6 +822,7 @@ export default function POSPage() {
 
   // Handle combined payment
   const handleCombinedPayment = async () => {
+    if (fiscalLoading) return; // Guard: previne dublu-click
     const cash = parseFloat(cashAmount) || 0;
     const card = parseFloat(cardAmount) || 0;
     const tickets = parseFloat(ticketAmount) || 0;
@@ -840,6 +844,7 @@ export default function POSPage() {
 
   // Generate simplified invoice
   const generateInvoice = async () => {
+    if (fiscalLoading) return; // Guard: previne dublu-click
     if (!invoiceData.firma || !invoiceData.cui) {
       toast.error('Completați datele firmei');
       return;
@@ -1447,11 +1452,12 @@ export default function POSPage() {
             </Button>
             <Button 
               onClick={generateInvoice} 
-              disabled={!invoiceData.firma || !invoiceData.cui}
+              disabled={!invoiceData.firma || !invoiceData.cui || fiscalLoading}
               className="bg-primary"
+              data-testid="generate-invoice-btn"
             >
-              <FileText className="w-4 h-4 mr-2" />
-              Generează Factură
+              {fiscalLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileText className="w-4 h-4 mr-2" />}
+              {fiscalLoading ? 'Se procesează...' : 'Generează Factură'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1549,11 +1555,12 @@ export default function POSPage() {
             </Button>
             <Button 
               onClick={handleCombinedPayment}
-              disabled={(parseFloat(cashAmount) || 0) + (parseFloat(cardAmount) || 0) + (parseFloat(ticketAmount) || 0) < total}
+              disabled={(parseFloat(cashAmount) || 0) + (parseFloat(cardAmount) || 0) + (parseFloat(ticketAmount) || 0) < total || fiscalLoading}
               className="bg-orange-600 hover:bg-orange-700"
+              data-testid="combined-confirm-btn"
             >
-              <CheckCircle className="w-4 h-4 mr-2" />
-              Finalizează Plata
+              {fiscalLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+              {fiscalLoading ? 'Se procesează...' : 'Finalizează Plata'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1585,7 +1592,9 @@ export default function POSPage() {
             </Button>
             <Button 
               className="bg-orange-600 hover:bg-orange-700"
+              disabled={fiscalLoading}
               onClick={async () => {
+                if (fiscalLoading) return;
                 setShowNoBridgeConfirm(false);
                 const method = pendingPaymentMethod;
                 setPendingPaymentMethod(null);
@@ -1602,6 +1611,7 @@ export default function POSPage() {
               }}
               data-testid="continue-without-fiscal-btn"
             >
+              {fiscalLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
               Continua fara bon fiscal
             </Button>
           </DialogFooter>

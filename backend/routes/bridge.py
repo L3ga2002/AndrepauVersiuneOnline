@@ -40,6 +40,7 @@ def _create_bridge_zip():
         "start_bridge.bat": bridge_dir / "start_bridge.bat",
         "ACTUALIZEAZA_BRIDGE.bat": bridge_dir / "actualizeaza_bridge.bat",
         "ANDREPAU.bat": root_dir / "ANDREPAU.bat",
+        "ANDREPAU_START.vbs": root_dir / "ANDREPAU_START.vbs",
         "OPRESTE_ANDREPAU.bat": root_dir / "OPRESTE_ANDREPAU.bat",
         "INSTALEAZA_TOTUL.bat": root_dir / "INSTALEAZA_TOTUL.bat",
         "local_setup/install_andrepau.bat": root_dir / "local_setup" / "install_andrepau.bat",

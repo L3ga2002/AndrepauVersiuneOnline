@@ -65,46 +65,61 @@ async def create_nir_from_pdf(data: dict, user: dict = Depends(require_admin)):
     numar_nir = await generate_nir_number()
     nir_items = []
     created_products = []
+    now_iso = datetime.now(timezone.utc).isoformat()
 
     for item in items:
         product_id = item.get("product_id")
         denumire = item.get("denumire", item.get("nume", ""))
         cantitate = float(item.get("cantitate", 0))
-        pret_achizitie = float(item.get("pret_achizitie", 0))
+        # Pretul din PDF e PRET VANZARE (valoare vanzare unitar, cu TVA inclus)
+        pret_vanzare = float(item.get("pret_vanzare", item.get("pret_achizitie", 0)))
         um = item.get("um", "buc")
 
         if not product_id:
+            # Produs NOU - denumirea din PDF, pret_vanzare din PDF
             new_product = {
                 "id": str(uuid.uuid4()),
                 "nume": denumire,
                 "categorie": "Necategorisit",
                 "cod_bare": "",
-                "pret_achizitie": pret_achizitie,
-                "pret_vanzare": round(pret_achizitie * 1.3, 2),
-                "tva": 19,
+                "pret_achizitie": 0,
+                "pret_vanzare": pret_vanzare,
+                "tva": 21,
                 "unitate": um if um in ["buc", "sac", "kg", "metru", "litru", "rola"] else "buc",
                 "stoc": cantitate,
                 "stoc_minim": 5,
                 "descriere": "",
                 "furnizor_id": furnizor_id,
-                "created_at": datetime.now(timezone.utc).isoformat()
+                "created_at": now_iso,
+                "updated_at": now_iso
             }
             await db.products.insert_one(new_product)
             product_id = new_product["id"]
             created_products.append({"product_id": product_id, "nume": denumire, "cod_bare": ""})
         else:
+            # Produs EXISTENT - PASTREAZA denumirea existenta, updateaza stocul si pret_vanzare
             await db.products.update_one(
                 {"id": product_id},
-                {"$inc": {"stoc": cantitate}}
+                {
+                    "$inc": {"stoc": cantitate},
+                    "$set": {
+                        "pret_vanzare": pret_vanzare,
+                        "updated_at": now_iso
+                    }
+                }
             )
             prod = await db.products.find_one({"id": product_id}, {"_id": 0, "nume": 1, "cod_bare": 1})
-            created_products.append({"product_id": product_id, "nume": prod["nume"] if prod else denumire, "cod_bare": prod.get("cod_bare", "") if prod else ""})
+            created_products.append({
+                "product_id": product_id,
+                "nume": prod["nume"] if prod else denumire,
+                "cod_bare": prod.get("cod_bare", "") if prod else ""
+            })
 
         nir_items.append({
             "product_id": product_id,
             "nume": denumire,
             "cantitate": cantitate,
-            "pret_achizitie": pret_achizitie
+            "pret_achizitie": pret_vanzare  # Pastram campul pentru compatibilitate istoric NIR
         })
 
     total = sum(i["cantitate"] * i["pret_achizitie"] for i in nir_items)
@@ -116,7 +131,7 @@ async def create_nir_from_pdf(data: dict, user: dict = Depends(require_admin)):
         "items": nir_items,
         "total": total,
         "furnizor_nume": supplier["nume"],
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "created_at": now_iso
     }
 
     await db.nirs.insert_one(nir_doc)
@@ -212,7 +227,10 @@ async def parse_nir_pdf(file: UploadFile = File(...), user: dict = Depends(requi
                     supplier_name = stripped
                     break
 
-    extracted_items = _extract_items_from_blocks(all_blocks)
+    extracted_items = _extract_items_from_multiline_blocks(all_blocks)
+
+    if not extracted_items:
+        extracted_items = _extract_items_from_blocks(all_blocks)
 
     if not extracted_items:
         extracted_items = _extract_items_from_lines(all_text)
@@ -242,7 +260,160 @@ async def parse_nir_pdf(file: UploadFile = File(...), user: dict = Depends(requi
     }
 
 
+def _extract_items_from_multiline_blocks(blocks: list) -> list:
+    """Parser pentru NIR multi-block (format TOP MASTER si similar).
+    Fiecare produs se intinde pe 2+ blocuri:
+      Block A: "N | Denumire produs partea 1"
+      Block B: "continuare denumire" (optional, multi-line)
+      Block C: "Marfa" sau similar (optional)
+      Block D: "buc | qty | qty_doc | pret_u | ... | pret_vz_unitar | total_vz"
+    Detecteaza inceputul prin '<num> | <text>' si finalizeaza cand gaseste block cu UM la inceput.
+    """
+    items = []
+    um_set = {"buc", "sac", "kg", "m", "ml", "m2", "mp", "mc", "litru", "l", "rola",
+              "set", "to", "pach", "pac", "fl", "cutie", "cmp"}
+    skip_continuation = {"marfa", "produs", "servicii", ""}
+
+    i = 0
+    n = len(blocks)
+    while i < n:
+        block = blocks[i]
+        parts = [p.strip() for p in block.strip().split('\n') if p.strip()]
+        if not parts:
+            i += 1
+            continue
+
+        # Detect row start:
+        # Case A: "N name..." on single first line (e.g., "10 CERESIT TS 62")
+        # Case B: "N" alone on first line, name on subsequent lines (e.g., "1\nMOMENT WOOD...")
+        first = parts[0]
+        m_a = re.match(r'^(\d{1,3})\s+([A-Za-zĂÂÎȘȚăâîșț].*)', first)
+        m_b = re.match(r'^(\d{1,3})$', first)
+
+        if m_a:
+            row_num = int(m_a.group(1))
+            name_seed = m_a.group(2).strip()
+        elif m_b and len(parts) > 1:
+            row_num = int(m_b.group(1))
+            name_seed = ""
+        else:
+            i += 1
+            continue
+
+        if not (1 <= row_num <= 999):
+            i += 1
+            continue
+
+        # Collect name pieces from current block
+        name_parts = []
+        if name_seed:
+            name_parts.append(name_seed)
+        for p in parts[1:]:
+            if p.lower() in um_set:
+                break
+            if p.lower() in skip_continuation:
+                continue
+            name_parts.append(p)
+
+        # Scan forward through subsequent blocks to find the UM/numbers block
+        j = i + 1
+        numbers_block = None
+        while j < n:
+            nxt = blocks[j].strip()
+            nxt_parts = [p.strip() for p in nxt.split('\n') if p.strip()]
+            if not nxt_parts:
+                j += 1
+                continue
+
+            nxt_first = nxt_parts[0].lower()
+            first_token = nxt_first.split()[0] if nxt_first else ""
+
+            # Does this block start with a UM token? Then it's the numbers row
+            if first_token in um_set:
+                numbers_block = nxt
+                break
+
+            # Is this a new row start (N name or just N)? Then bail out
+            if re.match(r'^\d{1,3}\s+[A-Za-zĂÂÎȘȚăâîșț]', nxt_parts[0]) or re.match(r'^\d{1,3}$', nxt_parts[0]):
+                break
+
+            # Otherwise this is name continuation
+            for p in nxt_parts:
+                if p.lower() not in skip_continuation and p.lower() not in um_set:
+                    name_parts.append(p)
+            j += 1
+
+        if not numbers_block:
+            i = j if j > i else i + 1
+            continue
+
+        # Parse numbers from numbers_block
+        nums_text = numbers_block.replace('|', ' ').replace('\n', ' ')
+        tokens = nums_text.split()
+        # First token is UM
+        um = tokens[0].lower() if tokens else "buc"
+        if um not in um_set:
+            um = "buc"
+
+        numbers = []
+        for t in tokens[1:]:
+            v = parse_number(t)
+            if v > 0:
+                numbers.append(v)
+
+        if len(numbers) < 2:
+            i = j + 1
+            continue
+
+        name = ' '.join(name_parts).strip()
+        # Clean up name: remove trailing "Marfa" variants
+        name = re.sub(r'\s+(Marfa|MARFA)\s*$', '', name).strip()
+
+        if len(name) < 3:
+            i = j + 1
+            continue
+
+        qty = numbers[0]
+        # FORMAT NIR extins cu coloane: cant, cant_doc, pret_furnizor, val, tva, total_furnizor,
+        # adaos%, adaos_u, adaos_t, pret_vz_fara_tva, aferent_adaos, tva_u, tva_t,
+        # VALOARE_VANZARE_UNITAR, VALOARE_VANZARE_TOTAL
+        # -> pret_vanzare = penultimul, valoare = ultimul
+        if len(numbers) >= 10:
+            pret_vanzare = numbers[-2]
+            valoare = numbers[-1]
+        elif len(numbers) >= 4:
+            # Format moderat: [cant, cant_doc, pret, valoare]
+            pret_vanzare = numbers[-2]
+            valoare = numbers[-1]
+        else:
+            # Format simplu: [cant, pret, valoare?]
+            pret_vanzare = numbers[1]
+            valoare = numbers[2] if len(numbers) > 2 else round(qty * pret_vanzare, 2)
+
+        if qty > 0 and pret_vanzare > 0:
+            items.append({
+                "denumire": name,
+                "um": um,
+                "cantitate": qty,
+                "pret_unitar": pret_vanzare,  # PRET VANZARE din PDF (cu TVA)
+                "valoare": valoare
+            })
+
+        i = j + 1
+
+    return items
+
+
 def _extract_items_from_blocks(blocks: list) -> list:
+    """Extract items from PDF blocks.
+    Detecteaza 2 formate:
+    1. NIR cu pret vanzare unitar (format TOP MASTER cu coloane extinse):
+       Nr | Denumire | UM | Cant | [Cant doc] | Pret furnizor | Val | TVA | Total |
+       Adaos% | Adaos_u | Adaos_t | Pvz_fara_tva | Aferent | TVA_u | TVA_t |
+       VALOARE_VANZARE_UNITAR | VALOARE_VANZARE_TOTAL
+    2. Factura simpla: Nr | Denumire | UM | Cant | Pret | Valoare
+    Returneaza pret_vanzare (unitar cu TVA inclus) pentru fiecare produs.
+    """
     items = []
     um_set = {"buc", "sac", "kg", "m", "ml", "m2", "mp", "mc", "litru", "l", "rola", "set", "to", "pach", "pac", "fl", "cutie", "cmp"}
 
@@ -259,6 +430,7 @@ def _extract_items_from_blocks(blocks: list) -> list:
         if row_num < 1 or row_num > 999:
             continue
 
+        # Gaseste pozitia UM
         um_idx = None
         for i, part in enumerate(parts[1:], 1):
             if part.lower() in um_set:
@@ -268,16 +440,35 @@ def _extract_items_from_blocks(blocks: list) -> list:
         if um_idx is not None and um_idx + 2 < len(parts):
             name = ' '.join(parts[1:um_idx])
             um = parts[um_idx].lower()
-            qty = parse_number(parts[um_idx + 1])
-            price = parse_number(parts[um_idx + 2])
-            valoare = parse_number(parts[um_idx + 3]) if um_idx + 3 < len(parts) else round(qty * price, 2)
+            # Extrage TOATE numerele dupa UM
+            numbers = []
+            for p in parts[um_idx + 1:]:
+                val = parse_number(p)
+                if val > 0:
+                    numbers.append(val)
 
-            if qty > 0 and price > 0 and len(name) > 2:
+            if len(numbers) < 2 or len(name) < 3:
+                continue
+
+            qty = numbers[0]
+
+            # FORMAT NIR extins (>= 10 numere dupa UM): ultimele 2 sunt pret_vanzare_unitar si total_vanzare
+            # Ex: [5, 5, 15.53, 77.65, 16.31, 93.96, 33.04, 5.13, 25.66, 20.66, 1.08, 4.34, 21.69, 25.00, 125.00]
+            #  -> cantitate=5, pret_vanzare=25.00, total=125.00
+            if len(numbers) >= 10:
+                pret_vanzare = numbers[-2]
+                valoare = numbers[-1]
+            # FORMAT simplu (3-4 numere): [cant, pret, valoare] sau [cant, pret]
+            else:
+                pret_vanzare = numbers[1]
+                valoare = numbers[2] if len(numbers) > 2 else round(qty * pret_vanzare, 2)
+
+            if qty > 0 and pret_vanzare > 0:
                 items.append({
                     "denumire": name,
                     "um": um if um in um_set else "buc",
                     "cantitate": qty,
-                    "pret_unitar": price,
+                    "pret_unitar": pret_vanzare,  # PRET VANZARE din PDF
                     "valoare": valoare
                 })
         else:
@@ -299,18 +490,23 @@ def _extract_items_from_blocks(blocks: list) -> list:
                     if val > 0:
                         numbers.append(val)
 
-                if len(numbers) >= 2:
+                if len(numbers) >= 2 and len(name) > 2:
                     qty = numbers[0]
-                    price = numbers[1]
-                    valoare = numbers[2] if len(numbers) > 2 else round(qty * price, 2)
-                    if len(name) > 2:
-                        items.append({
-                            "denumire": name,
-                            "um": "buc",
-                            "cantitate": qty,
-                            "pret_unitar": price,
-                            "valoare": valoare
-                        })
+                    # FORMAT NIR extins detectat si aici
+                    if len(numbers) >= 10:
+                        pret_vanzare = numbers[-2]
+                        valoare = numbers[-1]
+                    else:
+                        pret_vanzare = numbers[1]
+                        valoare = numbers[2] if len(numbers) > 2 else round(qty * pret_vanzare, 2)
+
+                    items.append({
+                        "denumire": name,
+                        "um": "buc",
+                        "cantitate": qty,
+                        "pret_unitar": pret_vanzare,
+                        "valoare": valoare
+                    })
 
     return items
 
@@ -359,12 +555,20 @@ def _extract_items_from_lines(text: str) -> list:
 
                 if len(numbers) >= 2 and name not in seen_names:
                     seen_names.add(name)
+                    qty = numbers[0]
+                    # FORMAT NIR extins: >= 10 numere -> pret_vanzare = penultimul, valoare = ultimul
+                    if len(numbers) >= 10:
+                        pret_vanzare = numbers[-2]
+                        valoare = numbers[-1]
+                    else:
+                        pret_vanzare = numbers[1]
+                        valoare = numbers[2] if len(numbers) > 2 else round(qty * pret_vanzare, 2)
                     items.append({
                         "denumire": name,
                         "um": um,
-                        "cantitate": numbers[0],
-                        "pret_unitar": numbers[1],
-                        "valoare": numbers[2] if len(numbers) > 2 else round(numbers[0] * numbers[1], 2)
+                        "cantitate": qty,
+                        "pret_unitar": pret_vanzare,
+                        "valoare": valoare
                     })
 
         i += 1

@@ -80,6 +80,7 @@ async def create_sale(sale: SaleCreate, user: dict = Depends(get_current_user)):
 async def get_sales(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    limit: int = 500,
     user: dict = Depends(get_current_user)
 ):
     query = {}
@@ -91,7 +92,8 @@ async def get_sales(
         else:
             query["created_at"] = {"$lte": end_date}
 
-    sales = await db.sales.find(query, {"_id": 0}).sort("created_at", -1).to_list(10000)
+    # Limitam la 500 implicit pentru performanta. Clientul poate cere mai mult explicit.
+    sales = await db.sales.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
     return [SaleResponse(**s) for s in sales]
 
 

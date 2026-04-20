@@ -52,16 +52,42 @@ async def create_nir(nir: NIRCreate, user: dict = Depends(require_admin)):
 @router.post("/nir/from-pdf")
 async def create_nir_from_pdf(data: dict, user: dict = Depends(require_admin)):
     furnizor_id = data.get("furnizor_id")
+    furnizor_nume = (data.get("furnizor_nume") or "").strip()
     numar_factura = data.get("numar_factura")
     items = data.get("items", [])
 
-    if not furnizor_id or not numar_factura or not items:
-        raise HTTPException(status_code=400, detail="Date incomplete")
+    if not numar_factura or not items:
+        raise HTTPException(status_code=400, detail="Date incomplete (numar factura sau produse lipsa)")
 
-    supplier = await db.suppliers.find_one({"id": furnizor_id}, {"_id": 0})
+    # Auto-select / auto-create supplier
+    supplier = None
+    if furnizor_id:
+        supplier = await db.suppliers.find_one({"id": furnizor_id}, {"_id": 0})
+
+    if not supplier and furnizor_nume:
+        # Cautam dupa nume exact (case-insensitive)
+        supplier = await db.suppliers.find_one(
+            {"nume": {"$regex": f"^{re.escape(furnizor_nume)}$", "$options": "i"}},
+            {"_id": 0}
+        )
+        # Daca nu exista, auto-creeaza
+        if not supplier:
+            new_supplier = {
+                "id": str(uuid.uuid4()),
+                "nume": furnizor_nume,
+                "telefon": None,
+                "email": None,
+                "adresa": None,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.suppliers.insert_one(new_supplier)
+            supplier = {k: v for k, v in new_supplier.items() if k != "_id"}
+            logger.info(f"[NIR-PDF] Auto-created supplier: {furnizor_nume}")
+
     if not supplier:
-        raise HTTPException(status_code=404, detail="Furnizor negăsit")
+        raise HTTPException(status_code=404, detail="Furnizor negăsit si numele nu a fost furnizat pentru creare automata")
 
+    furnizor_id = supplier["id"]
     numar_nir = await generate_nir_number()
     nir_items = []
     created_products = []
@@ -140,7 +166,8 @@ async def create_nir_from_pdf(data: dict, user: dict = Depends(require_admin)):
         "nir": nir_response,
         "created_products": created_products,
         "products_created_count": len([p for p in items if not p.get("product_id")]),
-        "products_updated_count": len([p for p in items if p.get("product_id")])
+        "products_updated_count": len([p for p in items if p.get("product_id")]),
+        "supplier_auto_created": not data.get("furnizor_id") and bool(furnizor_nume)
     }
 
 

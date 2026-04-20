@@ -303,7 +303,9 @@ export default function StockPage() {
 
   const submitPdfNir = async () => {
     const enabledItems = pdfItems.filter(i => i.enabled);
-    if (!pdfSupplierId) {
+    // Allow submit if: supplier selected OR supplier_name detected from PDF (auto-create)
+    const canAutoCreate = !pdfSupplierId && pdfResult?.supplier_name;
+    if (!pdfSupplierId && !canAutoCreate) {
       toast.error('Selectați furnizorul');
       return;
     }
@@ -319,7 +321,8 @@ export default function StockPage() {
     setSavingPdfNir(true);
     try {
       const nirPayload = {
-        furnizor_id: pdfSupplierId,
+        furnizor_id: pdfSupplierId || null,
+        furnizor_nume: canAutoCreate ? pdfResult.supplier_name : null,
         numar_factura: pdfInvoiceNumber,
         items: enabledItems.map(item => ({
           product_id: item.product_id || null,
@@ -343,7 +346,15 @@ export default function StockPage() {
         const result = await response.json();
         const newCount = result.products_created_count || 0;
         const updCount = result.products_updated_count || 0;
-        toast.success(`NIR creat! ${newCount} produse noi create, ${updCount} actualizate`);
+        const supplierAuto = result.supplier_auto_created;
+        const msg = supplierAuto
+          ? `NIR creat! Furnizor auto-creat + ${newCount} produse noi, ${updCount} actualizate`
+          : `NIR creat! ${newCount} produse noi create, ${updCount} actualizate`;
+        toast.success(msg);
+        if (supplierAuto) {
+          // Refresh supplier list
+          fetchSuppliers();
+        }
         setShowPdfDialog(false);
         // Open barcode dialog with ALL items
         const nirItems = (result.created_products || []).map(p => ({
@@ -898,20 +909,30 @@ export default function StockPage() {
                 <div>
                   <Label className="text-muted-foreground">Furnizor *</Label>
                   <Select 
-                    value={pdfSupplierId || "_none_"} 
-                    onValueChange={(v) => setPdfSupplierId(v === "_none_" ? "" : v)}
+                    value={pdfSupplierId || (pdfResult.supplier_name ? "_auto_" : "_none_")} 
+                    onValueChange={(v) => setPdfSupplierId(v === "_none_" || v === "_auto_" ? "" : v)}
                   >
                     <SelectTrigger data-testid="pdf-furnizor" className="h-12 mt-1 bg-background border-border text-foreground">
                       <SelectValue placeholder="Selectați furnizorul" />
                     </SelectTrigger>
                     <SelectContent className="bg-card border-border">
-                      <SelectItem value="_none_">Selectați furnizorul</SelectItem>
+                      {pdfResult.supplier_name && (
+                        <SelectItem value="_auto_" className="text-green-500">
+                          ✨ Auto-creează: {pdfResult.supplier_name}
+                        </SelectItem>
+                      )}
+                      <SelectItem value="_none_">-- Selectați manual --</SelectItem>
                       {suppliers.filter(sup => sup && sup.id).map(sup => (
                         <SelectItem key={sup.id} value={sup.id}>{sup.nume}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {pdfResult.supplier_name && (
+                  {pdfResult.supplier_name && !pdfSupplierId && (
+                    <p className="text-xs text-green-500 mt-1">
+                      Se va crea automat: <span className="font-medium">{pdfResult.supplier_name}</span>
+                    </p>
+                  )}
+                  {pdfResult.supplier_name && pdfSupplierId && (
                     <p className="text-xs text-muted-foreground mt-1">
                       Detectat din PDF: <span className="text-primary">{pdfResult.supplier_name}</span>
                     </p>

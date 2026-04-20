@@ -247,18 +247,19 @@ def write_command(commands: list) -> dict:
             start_time = time.time()
             while time.time() - start_time < RESPONSE_TIMEOUT:
                 if os.path.exists(ERROR_FILE):
-                    time.sleep(0.3)
+                    # Wait briefly for SuccesDrv to finish writing ERROR.TXT
+                    time.sleep(0.1)
                     try:
                         with open(ERROR_FILE, 'r', encoding='cp1250') as f:
                             response = f.read().strip()
                     except:
-                        time.sleep(0.2)
+                        time.sleep(0.1)
                         continue
 
                     logger.info(f"=== RASPUNS PRIMIT ===\n{response}")
                     return parse_response(response)
 
-                time.sleep(0.1)
+                time.sleep(0.05)
 
             online_still_exists = os.path.exists(ONLINE_FILE)
             return {

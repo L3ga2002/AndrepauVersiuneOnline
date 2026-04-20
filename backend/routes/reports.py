@@ -163,20 +163,34 @@ async def get_profit_report(period: str = "month", user: dict = Depends(require_
     else:
         start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    sales = await db.sales.find(
-        {"created_at": {"$gte": start.isoformat()}},
-        {"_id": 0}
-    ).to_list(10000)
+    # FIX: Optimizat cu aggregation + $lookup (O(1) in loc de N+1 queries separate)
+    pipeline = [
+        {"$match": {"created_at": {"$gte": start.isoformat()}}},
+        {"$unwind": "$items"},
+        {"$lookup": {
+            "from": "products",
+            "localField": "items.product_id",
+            "foreignField": "id",
+            "as": "product"
+        }},
+        {"$unwind": {"path": "$product", "preserveNullAndEmptyArrays": True}},
+        {"$group": {
+            "_id": None,
+            "total_vanzari": {"$sum": {"$multiply": ["$items.cantitate", "$items.pret_unitar"]}},
+            "total_cost": {"$sum": {"$multiply": [
+                "$items.cantitate",
+                {"$ifNull": ["$product.pret_achizitie", 0]}
+            ]}}
+        }}
+    ]
 
-    total_vanzari = 0
-    total_cost = 0
-
-    for sale in sales:
-        for item in sale["items"]:
-            total_vanzari += item["cantitate"] * item["pret_unitar"]
-            product = await db.products.find_one({"id": item["product_id"]}, {"_id": 0})
-            if product:
-                total_cost += item["cantitate"] * product["pret_achizitie"]
+    result = await db.sales.aggregate(pipeline).to_list(1)
+    if result:
+        total_vanzari = result[0]["total_vanzari"]
+        total_cost = result[0]["total_cost"]
+    else:
+        total_vanzari = 0
+        total_cost = 0
 
     profit = total_vanzari - total_cost
     margin = (profit / total_vanzari * 100) if total_vanzari > 0 else 0

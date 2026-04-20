@@ -105,10 +105,21 @@ Complete store management and POS application for "ANDREPAU" construction materi
 - **[NEW] ANDREPAU.bat - single-click launcher (MongoDB + FastAPI + Bridge + Browser)**
 - **[NEW] OPRESTE_ANDREPAU.bat - single-click stop**
 
+## [2026-04-20] Iteration 16: Critical Bug Fixes + Sync Overhaul
+- **[P0 FIX] Double-click printing 2 fiscal receipts on "Genereaza Factura cu CUI"** - added `fiscalLoading` guards in handlePayment, confirmCashPayment, handleCombinedPayment, processSaleWithFiscal, and generateInvoice. All payment buttons and "Continua fara bon fiscal" now show "Se proceseaza..." spinner and are disabled during processing.
+- **[P1 FIX] Stock sync VPS <-> Local (bidirectional)** - Added `/api/sync/sales-since` endpoint (no auth, returns sales after timestamp) + `/api/sync/apply-remote-sales` (requires sync_secret, decrements stock + inserts sales, skips duplicates by transaction_id/id). Layout.js now runs FULL sync every 15s (reduced from 30s) regardless of pending count. Stock on `updated_at` is set when stock decrements via sales, sync/receive, and apply-remote-sales. `/sync/products/push` NO LONGER copies `stoc` field on existing product updates (only on INSERT) to prevent race conditions.
+- **[P1 FIX] NIR PDF parser** - Rewrote parser in `_extract_items_from_multiline_blocks` for multi-block NIR format (e.g., TOP MASTER invoices with Nr | Denumire | UM | Cant | Cant_doc | Pret_furnizor | ... | Pret_vanzare_unitar | Total). Now correctly extracts all 12 products from user's test PDF with PRET VANZARE (25.00, 60.00, 41.00 etc.) instead of failing or using supplier price. Field renamed to `pret_vanzare` in NIR payload. New products created with pret_vanzare from PDF (no *1.3 markup); existing products: stock incremented + pret_vanzare updated + original name preserved.
+- **[NEW FEATURE] Barcode merge logic** in `/api/products/bulk-barcode` - When saving a barcode that already exists on ANOTHER product, the newer product is deleted and its stock is transferred to the existing one, keeping the original name. Response includes `merged` count + `merge_details`.
+- **[PERF FIX] INCOTEX printing delay** - Reduced bridge poll from 2s to 0.5s + frontend status check from 1s to 0.5s (max 35s wait preserved via 70 iterations x 500ms).
+- **[STABILITY FIX] White screen crash on offline** - Added `ErrorBoundary` React component that catches unhandled errors, shows friendly message + "Reincarca aplicatia" button, auto-reloads after 3s (with 1h cooldown), logs to localStorage for debugging.
+- **[UX FIX] Hidden CMD windows on offline launcher** - Created `ANDREPAU_START.vbs` that uses `pythonw.exe` (Python without console) and `wscript` with WindowStyle=0 to launch MongoDB, Backend, and Bridge completely hidden. `ANDREPAU.bat` now just calls this VBS. User sees only Chrome in --app mode.
+- **[NEW] INSTRUCTIUNI_UPDATE.md** - Step-by-step Romanian guide for updating VPS + Local installations with verification checklist.
+
 ## Remaining P1
 - Copiere/Reprint bon (comanda COPIE INCOTEX hardware - NU bon fiscal nou)
 
 ## P2 Tasks
+- Cautare CUI offline (cache companii local)
 - Raport Z Dashboard (doar vizualizare)
 - Sectiune Update-uri ANAF
 - Optimizare Mobila (responsive)
